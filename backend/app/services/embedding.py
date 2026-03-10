@@ -1,8 +1,7 @@
 """嵌入服务：负责文本向量化"""
 from typing import List, Optional
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
-from langchain.schema import Document as LangDocument
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 

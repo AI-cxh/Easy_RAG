@@ -197,10 +197,14 @@ const createKb = async () => {
 
   creating.value = true
   try {
-    await knowledgeAPI.create(newKbForm.value)
+    const result = await knowledgeAPI.create(newKbForm.value)
     showCreateDialog.value = false
     newKbForm.value = { name: '', description: '' }
     await loadKnowledgeBases()
+    // 自动选中新创建的知识库
+    if (result && result.id) {
+      selectKb(result)
+    }
   } catch (error: any) {
     console.error('Failed to create knowledge base:', error)
     alert(error.message || '创建知识库失败')

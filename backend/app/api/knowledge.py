@@ -11,14 +11,14 @@ from app.services.embedding import embedding_service
 router = APIRouter()
 
 
-@router.get("", response_model=list[KnowledgeBaseResponse])
+@router.get("/knowledge", response_model=list[KnowledgeBaseResponse])
 async def get_knowledge_bases(db: Session = Depends(get_db)):
     """获取所有知识库列表"""
     knowledge_bases = db.query(KnowledgeBase).order_by(KnowledgeBase.created_at.desc()).all()
     return knowledge_bases
 
 
-@router.post("", response_model=KnowledgeBaseResponse)
+@router.post("/knowledge", response_model=KnowledgeBaseResponse)
 async def create_knowledge_base(kb_data: KnowledgeBaseCreate, db: Session = Depends(get_db)):
     """创建新知识库"""
     # 检查名称是否已存在
@@ -33,7 +33,7 @@ async def create_knowledge_base(kb_data: KnowledgeBaseCreate, db: Session = Depe
     return knowledge_base
 
 
-@router.get("/{kb_id}", response_model=KnowledgeBaseWithDocuments)
+@router.get("/knowledge/{kb_id}", response_model=KnowledgeBaseWithDocuments)
 async def get_knowledge_base(kb_id: int, db: Session = Depends(get_db)):
     """获取知识库详情（包含文档列表）"""
     knowledge_base = db.query(KnowledgeBase).filter(KnowledgeBase.id == kb_id).first()
@@ -42,7 +42,7 @@ async def get_knowledge_base(kb_id: int, db: Session = Depends(get_db)):
     return knowledge_base
 
 
-@router.delete("/{kb_id}")
+@router.delete("/knowledge/{kb_id}")
 async def delete_knowledge_base(kb_id: int, db: Session = Depends(get_db)):
     """删除知识库（包括所有文档和向量数据）"""
     knowledge_base = db.query(KnowledgeBase).filter(KnowledgeBase.id == kb_id).first()
@@ -58,7 +58,7 @@ async def delete_knowledge_base(kb_id: int, db: Session = Depends(get_db)):
     return {"message": "知识库已删除"}
 
 
-@router.get("/{kb_id}/documents", response_model=DocumentListResponse)
+@router.get("/knowledge/{kb_id}/documents", response_model=DocumentListResponse)
 async def get_documents(kb_id: int, db: Session = Depends(get_db)):
     """获取知识库的文档列表"""
     knowledge_base = db.query(KnowledgeBase).filter(KnowledgeBase.id == kb_id).first()

@@ -1,7 +1,6 @@
 """网络搜索服务：提供网络搜索功能"""
 from typing import List, Dict, Optional
-import httpx
-from urllib.parse import quote_plus
+from tavily import TavilyClient
 
 
 class SearchService:
@@ -12,10 +11,12 @@ class SearchService:
         初始化搜索服务
 
         Args:
-            api_key: 可选的搜索API密钥
+            api_key: Tavily API密钥
         """
         self.api_key = api_key
-        self.timeout = 10
+        self.tavily_client = None
+        if api_key:
+            self.tavily_client = TavilyClient(api_key=api_key)
 
     async def web_search(self, query: str, num_results: int = 5) -> List[Dict]:
         """
@@ -28,61 +29,39 @@ class SearchService:
         Returns:
             搜索结果列表
         """
-        # 目前使用DuckDuckGo API（无需API密钥）
-        results = await self._duckduckgo_search(query, num_results)
-
-        return results
-
-    async def _duckduckgo_search(self, query: str, num_results: int) -> List[Dict]:
-        """
-        使用DuckDuckGo进行搜索
-
-        Args:
-            query: 搜索查询
-            num_results: 返回结果数量
-
-        Returns:
-            搜索结果列表
-        """
-        url = "https://api.duckduckgo.com/"
-        params = {
-            "q": query,
-            "format": "json",
-            "no_html": 1,
-            "skip_disambig": 1
-        }
+        if not self.tavily_client:
+            return [{
+                'title': '搜索服务未配置',
+                'snippet': '请设置 SEARCH_API_KEY 环境变量以使用 Tavily 搜索服务',
+                'url': '#'
+            }]
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.get(url, params=params)
-                response.raise_for_status()
-                data = response.json()
+            # 使用 Tavily API 进行搜索
+            response = self.tavily_client.search(
+                query=query,
+                max_results=num_results,
+                search_depth="basic",
+                include_answer=False,
+                include_raw_content=False,
+                include_images=False
+            )
 
-                results = []
-                if 'RelatedTopics' in data:
-                    for topic in data['RelatedTopics'][:num_results]:
-                        if 'Text' in topic and 'FirstURL' in topic:
-                            results.append({
-                                'title': topic.get('Text', '').split(' - ')[0][:100],
-                                'snippet': topic.get('Text', ''),
-                                'url': topic['FirstURL']
-                            })
-                        elif isinstance(topic, dict) and 'Topics' in topic:
-                            for subtopic in topic['Topics'][:int(num_results/2)]:
-                                if 'Text' in subtopic and 'FirstURL' in subtopic:
-                                    results.append({
-                                        'title': subtopic.get('Text', '').split(' - ')[0][:100],
-                                        'snippet': subtopic.get('Text', ''),
-                                        'url': subtopic['FirstURL']
-                                    })
+            results = []
+            for result in response.get('results', []):
+                results.append({
+                    'title': result.get('title', ''),
+                    'snippet': result.get('content', ''),
+                    'url': result.get('url', '')
+                })
 
-                return results[:num_results]
+            return results
 
         except Exception as e:
-            # 如果DuckDuckGo失败，返回模拟结果
+            # 如果搜索失败，返回错误信息
             return [{
-                'title': '搜索服务暂时不可用',
-                'snippet': f'搜索 "{query}" 时遇到错误: {str(e)}。这可能是网络连接问题或搜索服务限制。',
+                'title': '搜索服务错误',
+                'snippet': f'搜索 "{query}" 时遇到错误: {str(e)}。请检查 API 密钥是否正确。',
                 'url': '#'
             }]
 

@@ -1,8 +1,7 @@
 """RAG核心服务：负责检索增强生成"""
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, AsyncGenerator
 from langchain_openai import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate
-from langchain.schema import SystemMessage, HumanMessage
+from langchain_core.messages import SystemMessage, HumanMessage
 
 from app.config import settings
 from app.services.embedding import embedding_service
@@ -113,6 +112,64 @@ class RAGService:
             formatted.append(f"[搜索结果{i}] 标题: {result.get('title', '未知')}\n链接: {result.get('url', '')}\n摘要: {result.get('snippet', '')}")
 
         return "\n\n---\n\n".join(formatted)
+
+    async def stream_generate_response(
+        self,
+        query: str,
+        context: str,
+        search_results: Optional[List[Dict]] = None,
+        chat_history: Optional[List[Dict]] = None
+    ) -> AsyncGenerator[str, None]:
+        """
+        流式生成响应
+
+        Args:
+            query: 用户查询
+            context: 知识库上下文
+            search_results: 网络搜索结果
+            chat_history: 聊天历史
+
+        Yields:
+            生成的响应文本块
+        """
+        # 构建系统提示词
+        system_prompt = """你是一个智能助手，帮助用户回答问题。请根据提供的上下文和搜索结果来回答问题。
+
+回答要求：
+1. 如果上下文中有相关信息，优先使用上下文中的信息
+2. 如果上下文中没有相关信息，可以结合搜索结果来回答
+3. 如果上下文和搜索结果都没有相关信息，请诚实地告诉用户你无法从提供的信息中找到答案
+4. 回答要清晰、准确、有条理
+5. 引用来源时，请注明信息来源
+6. 不要编造信息
+
+上下文信息：
+{context}"""
+
+        if search_results:
+            system_prompt += "\n\n网络搜索结果：\n{search_results}"
+
+        # 构建消息列表
+        messages = [SystemMessage(content=system_prompt.format(
+            context=context if context else "无上下文信息",
+            search_results=self._format_search_results(search_results) if search_results else "无搜索结果"
+        ))]
+
+        # 添加聊天历史
+        if chat_history:
+            for msg in chat_history[-6:]:  # 只保留最近3轮对话
+                if msg['role'] == 'user':
+                    messages.append(HumanMessage(content=msg['content']))
+                elif msg['role'] == 'assistant':
+                    messages.append(SystemMessage(content=msg['content']))
+
+        # 添加当前查询
+        messages.append(HumanMessage(content=query))
+
+        # 流式生成响应
+        async for chunk in self.llm.astream(messages):
+            if chunk.content:
+                yield chunk.content
 
 
 # 全局RAG服务实例

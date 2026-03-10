@@ -25,9 +25,9 @@ app.add_middleware(
 )
 
 # 注册路由
-app.include_router(chat.router, prefix="/api/chat", tags=["聊天"])
-app.include_router(knowledge.router, prefix="/api/knowledge", tags=["知识库"])
-app.include_router(upload.router, prefix="/api/upload", tags=["文件上传"])
+app.include_router(chat.router, prefix="/api", tags=["聊天"])
+app.include_router(knowledge.router, prefix="/api", tags=["知识库"])
+app.include_router(upload.router, prefix="/api", tags=["文件上传"])
 
 # 启动事件
 @app.on_event("startup")

@@ -18,7 +18,7 @@ UPLOAD_DIR = settings.CHROMA_DB_PATH + "/../uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
-@router.post("/{kb_id}", response_model=DocumentResponse)
+@router.post("/upload/{kb_id}", response_model=DocumentResponse)
 async def upload_file(
     kb_id: int,
     file: UploadFile = File(...),
@@ -94,7 +94,7 @@ async def upload_file(
         raise HTTPException(status_code=500, detail=f"文件上传失败: {str(e)}")
 
 
-@router.delete("/documents/{doc_id}")
+@router.delete("/upload/documents/{doc_id}")
 async def delete_document(doc_id: int, db: Session = Depends(get_db)):
     """
     删除文档

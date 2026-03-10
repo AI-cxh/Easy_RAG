@@ -75,15 +75,88 @@ export const uploadAPI = {
   deleteDocument: (docId: number) => apiClient.delete(`/upload/documents/${docId}`)
 }
 
-// 聊天API
+// 聊天API - 流式响应
+export interface StreamMessage {
+  type: 'chunk' | 'end' | 'error'
+  content?: string
+  session_id?: number
+  sources?: string[]
+  search_results?: Array<{ title: string; url: string; snippet?: string }>
+  message?: string
+}
+
 export const chatAPI = {
-  // 发送消息
-  sendMessage: (data: {
-    message: string
-    session_id?: number
-    kb_ids?: number[]
-    use_web_search?: boolean
-  }) => apiClient.post('/chat', data),
+  // 发送消息 - 流式响应
+  sendMessageStream: async (
+    data: {
+      message: string
+      session_id?: number
+      kb_ids?: number[]
+      use_web_search?: boolean
+    },
+    onChunk: (message: StreamMessage) => void
+  ): Promise<{ sessionId: number; sources?: string[]; searchResults?: any[] }> => {
+    const response = await fetch(`${API_BASE_URL}/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(data)
+    })
+
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+
+    const reader = response.body?.getReader()
+    const decoder = new TextDecoder()
+
+    if (!reader) {
+      throw new Error('无法读取响应流')
+    }
+
+    let sessionId: number | undefined
+    let sources: string[] | undefined
+    let searchResults: any[] | undefined
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+
+      if (done) break
+
+      // 解码并追加到缓冲区
+      buffer += decoder.decode(value, { stream: true })
+
+      // 处理 SSE 格式的消息
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || '' // 保留最后一个不完整的行
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6))
+            onChunk(data)
+
+            if (data.type === 'end') {
+              sessionId = data.session_id
+              sources = data.sources
+              searchResults = data.search_results
+            }
+          } catch (e) {
+            console.error('Failed to parse SSE data:', e)
+          }
+        }
+      }
+    }
+
+    return {
+      sessionId: sessionId || data.session_id,
+      sources,
+      searchResults
+    }
+  },
 
   // 获取所有会话
   getSessions: () => apiClient.get('/chat/sessions'),
