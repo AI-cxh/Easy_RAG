@@ -49,8 +49,14 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 消息渲染组件
+ * 渲染链：Markdown -> DOMPurify sanitize -> v-html
+ * 安全说明：所有用户输入经过 marked 解析后，通过 DOMPurify 清洗，防止 XSS 攻击
+ */
 import { marked } from 'marked'
 import hljs from 'highlight.js'
+import DOMPurify from 'dompurify'
 import 'highlight.js/styles/github.css'
 
 interface Message {
@@ -76,8 +82,39 @@ marked.setOptions({
   gfm: true
 })
 
+// 配置 DOMPurify 允许的标签和属性
+const ALLOWED_TAGS = [
+  'a', 'b', 'i', 'strong', 'em', 'u', 's', 'br', 'p', 'div', 'span',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'ul', 'ol', 'li', 'dl', 'dt', 'dd',
+  'table', 'thead', 'tbody', 'tr', 'th', 'td',
+  'pre', 'code', 'blockquote',
+  'hr', 'img'
+]
+
+const ALLOWED_ATTR = [
+  'href', 'title', 'alt', 'src', 'width', 'height',
+  'class', 'id', 'target', 'rel'
+]
+
+// 配置 DOMPurify 钩子：为外链添加安全属性
+DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  if (node.tagName === 'A') {
+    const href = node.getAttribute('href')
+    if (href && (href.startsWith('http://') || href.startsWith('https://'))) {
+      node.setAttribute('target', '_blank')
+      node.setAttribute('rel', 'noopener noreferrer')
+    }
+  }
+})
+
 const renderMessage = (content: string) => {
-  return marked.parse(content)
+  // 渲染链：Markdown -> sanitize -> v-html
+  const rawHtml = marked.parse(content) as string
+  return DOMPurify.sanitize(rawHtml, {
+    ALLOWED_TAGS,
+    ALLOWED_ATTR
+  })
 }
 </script>
 

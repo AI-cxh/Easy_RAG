@@ -1,0 +1,112 @@
+/**
+ * 设计令牌 - Design Tokens
+ * 包含颜色、间距、圆角、阴影、字体、层级等基础变量
+ */
+
+:root {
+  /* 颜色系统 */
+  --color-primary: #4a90d9;
+  --color-primary-hover: #357abd;
+  --color-primary-light: rgba(74, 144, 217, 0.1);
+
+  --color-success: #27ae60;
+  --color-success-hover: #219a52;
+
+  --color-danger: #e74c3c;
+  --color-danger-hover: #c0392b;
+  --color-danger-light: rgba(231, 76, 60, 0.1);
+
+  --color-warning: #f39c12;
+
+  /* 背景色 */
+  --bg-base: #f5f7fa;
+  --bg-card: #ffffff;
+  --bg-hover: #ecf0f1;
+
+  /* 文字颜色 */
+  --text-primary: #2c3e50;
+  --text-secondary: #7f8c8d;
+  --text-muted: #95a5a6;
+  --text-inverse: #ffffff;
+
+  /* 边框颜色 */
+  --border-base: #e1e4e8;
+  --border-light: #f0f2f5;
+
+  /* 消息气泡颜色 */
+  --msg-user-bg: #4a90d9;
+  --msg-assistant-bg: #f8f9fa;
+
+  /* 间距系统 */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 20px;
+  --spacing-2xl: 24px;
+  --spacing-3xl: 32px;
+
+  /* 圆角 */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-full: 9999px;
+
+  /* 阴影 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.15);
+
+  /* 字体 */
+  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-family-mono: 'Monaco', 'Menlo', 'Consolas', monospace;
+
+  /* 字号 */
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-base: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 18px;
+  --font-size-2xl: 20px;
+  --font-size-3xl: 24px;
+
+  /* 行高 */
+  --line-height-tight: 1.25;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.6;
+  --line-height-loose: 1.8;
+
+  /* 层级 */
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-modal: 1000;
+  --z-tooltip: 1100;
+
+  /* 过渡 */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.2s ease;
+  --transition-slow: 0.3s ease;
+
+  /* 响应式断点 */
+  --breakpoint-sm: 480px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1200px;
+}
+
+/* 兼容旧变量名 */
+:root {
+  --primary-color: var(--color-primary);
+  --primary-hover: var(--color-primary-hover);
+  --bg-color: var(--bg-base);
+  --card-bg: var(--bg-card);
+  --text-primary: var(--text-primary);
+  --text-secondary: var(--text-secondary);
+  --border-color: var(--border-base);
+  --success-color: var(--color-success);
+  --danger-color: var(--color-danger);
+  --user-msg-bg: var(--msg-user-bg);
+  --assistant-msg-bg: var(--msg-assistant-bg);
+}

@@ -1,19 +1,11 @@
 import { createApp } from 'vue'
-import { createRouter, createWebHistory } from 'vue-router'
 import App from './App.vue'
-import './styles/main.css'
-import Chat from './views/Chat.vue'
-import KnowledgeBase from './views/KnowledgeBase.vue'
+import router from './router'
 
-// 创建路由
-const router = createRouter({
-  history: createWebHistory(),
-  routes: [
-    { path: '/', redirect: '/chat' },
-    { path: '/chat', name: 'Chat', component: Chat },
-    { path: '/knowledge', name: 'Knowledge', component: KnowledgeBase }
-  ]
-})
+// 样式引入顺序：设计令牌 -> 布局 -> 组件
+import './styles/tokens.css'
+import './styles/layout.css'
+import './styles/components.css'
 
 const app = createApp(App)
 app.use(router)
