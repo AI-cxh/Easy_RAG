@@ -1,78 +1,128 @@
-import axios from 'axios'
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
-
-const apiClient = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 60000,
-  headers: {
-    'Content-Type': 'application/json'
-  }
-})
-
-// 请求拦截器
-apiClient.interceptors.request.use(
-  (config) => {
-    return config
-  },
-  (error) => {
-    return Promise.reject(error)
-  }
-)
-
-// 响应拦截器
-apiClient.interceptors.response.use(
-  (response) => {
-    return response.data
-  },
-  (error) => {
-    const message = error.response?.data?.detail || error.message || '请求失败'
-    console.error('API Error:', message)
-    return Promise.reject(new Error(message))
-  }
-)
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:9000/api'
 
 // 知识库API
 export const knowledgeAPI = {
   // 获取所有知识库
-  getAll: () => apiClient.get('/knowledge'),
+  getAll: async () => {
+    const response = await fetch(`${API_BASE_URL}/knowledge`)
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  },
 
   // 创建知识库
-  create: (data: { name: string; description?: string }) =>
-    apiClient.post('/knowledge', data),
+  create: async (data: { name: string; description?: string }) => {
+    const response = await fetch(`${API_BASE_URL}/knowledge`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(data)
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '创建知识库失败')
+    }
+    return response.json()
+  },
 
   // 获取知识库详情
-  get: (id: number) => apiClient.get(`/knowledge/${id}`),
+  get: async (id: number) => {
+    const response = await fetch(`${API_BASE_URL}/knowledge/${id}`)
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  },
 
   // 删除知识库
-  delete: (id: number) => apiClient.delete(`/knowledge/${id}`),
+  delete: async (id: number) => {
+    const response = await fetch(`${API_BASE_URL}/knowledge/${id}`, {
+      method: 'DELETE'
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  },
 
   // 获取知识库文档列表
-  getDocuments: (id: number) => apiClient.get(`/knowledge/${id}/documents`)
+  getDocuments: async (id: number) => {
+    const response = await fetch(`${API_BASE_URL}/knowledge/${id}/documents`)
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  },
+
+  // 重命名知识库
+  update: async (id: number, data: { name: string; description?: string }) => {
+    const response = await fetch(`${API_BASE_URL}/knowledge/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(data)
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  }
 }
 
 // 文件上传API
 export const uploadAPI = {
   // 上传文件
-  upload: (kbId: number, file: File, onProgress?: (progress: number) => void) => {
+  upload: async (kbId: number, file: File, onProgress?: (progress: number) => void) => {
     const formData = new FormData()
     formData.append('file', file)
 
-    return apiClient.post(`/upload/${kbId}`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      },
-      onUploadProgress: (progressEvent) => {
-        if (onProgress && progressEvent.total) {
-          const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+    // 使用 XMLHttpRequest 来支持上传进度
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', `${API_BASE_URL}/upload/${kbId}`)
+
+      xhr.upload.onprogress = (event) => {
+        if (onProgress && event.lengthComputable) {
+          const progress = Math.round((event.loaded / event.total) * 100)
           onProgress(progress)
         }
       }
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(xhr.response ? JSON.parse(xhr.response) : {})
+        } else {
+          reject(new Error(xhr.statusText || '上传文件失败'))
+        }
+      }
+
+      xhr.onerror = () => {
+        reject(new Error('上传文件失败'))
+      }
+
+      xhr.send(formData)
     })
   },
 
   // 删除文档
-  deleteDocument: (docId: number) => apiClient.delete(`/upload/documents/${docId}`)
+  deleteDocument: async (docId: number) => {
+    const response = await fetch(`${API_BASE_URL}/upload/documents/${docId}`, {
+      method: 'DELETE'
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  }
 }
 
 // 聊天API - 流式响应
@@ -159,13 +209,51 @@ export const chatAPI = {
   },
 
   // 获取所有会话
-  getSessions: () => apiClient.get('/chat/sessions'),
+  getSessions: async () => {
+    const response = await fetch(`${API_BASE_URL}/chat/sessions`)
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  },
 
   // 获取会话详情
-  getSession: (id: number) => apiClient.get(`/chat/sessions/${id}`),
+  getSession: async (id: number) => {
+    const response = await fetch(`${API_BASE_URL}/chat/sessions/${id}`)
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  },
 
   // 删除会话
-  deleteSession: (id: number) => apiClient.delete(`/chat/sessions/${id}`)
+  deleteSession: async (id: number) => {
+    const response = await fetch(`${API_BASE_URL}/chat/sessions/${id}`, {
+      method: 'DELETE'
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  },
+
+  // 重命名会话
+  renameSession: async (id: number, title: string) => {
+    const response = await fetch(`${API_BASE_URL}/chat/sessions/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ title })
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  }
 }
 
-export default apiClient

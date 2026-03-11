@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.models.database import get_db
 from app.models.models import KnowledgeBase, Document
-from app.models.schemas import KnowledgeBaseCreate, KnowledgeBaseResponse, KnowledgeBaseWithDocuments, DocumentListResponse
+from app.models.schemas import KnowledgeBaseCreate, KnowledgeBaseResponse, KnowledgeBaseWithDocuments, DocumentListResponse, KnowledgeBaseRenameRequest
 from app.services.embedding import embedding_service
 
 
@@ -56,6 +56,29 @@ async def delete_knowledge_base(kb_id: int, db: Session = Depends(get_db)):
     db.delete(knowledge_base)
     db.commit()
     return {"message": "知识库已删除"}
+
+
+@router.put("/knowledge/{kb_id}")
+async def update_knowledge_base(kb_id: int, request: KnowledgeBaseRenameRequest, db: Session = Depends(get_db)):
+    """更新知识库名称和描述"""
+    knowledge_base = db.query(KnowledgeBase).filter(KnowledgeBase.id == kb_id).first()
+    if not knowledge_base:
+        raise HTTPException(status_code=404, detail="知识库不存在")
+
+    # 检查名称是否与其他知识库重复
+    existing = db.query(KnowledgeBase).filter(
+        KnowledgeBase.name == request.name,
+        KnowledgeBase.id != kb_id
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="知识库名称已存在")
+
+    knowledge_base.name = request.name
+    if request.description is not None:
+        knowledge_base.description = request.description
+
+    db.commit()
+    return {"message": "知识库已更新", "id": kb_id, "name": request.name, "description": request.description}
 
 
 @router.get("/knowledge/{kb_id}/documents", response_model=DocumentListResponse)

@@ -8,17 +8,19 @@ class Settings(BaseSettings):
     API_PORT: int = 8000
 
     # AI模型配置
-    OPENAI_API_KEY: str = "your_api_key"
-    OPENAI_API_BASE: Optional[str] = "http://localhost:11434/v1"
+    OPENAI_API_KEY: str = "sk-3e63a0bd10724616af4b6cc7711283c2"
+    OPENAI_API_BASE: Optional[str] = "https://api.deepseek.com"
     # 支持 OPENAI_BASE_URL 作为 OPENAI_API_BASE 的别名
     OPENAI_BASE_URL: Optional[str] = None
-    MODEL_NAME: str = "gpt-4o-mini"
+    MODEL_NAME: str = "deepseek-chat"
 
     # 嵌入模型配置
-    EMBEDDING_MODEL: str = "text-embedding-3-small"
+    EMBEDDING_MODEL: str = "BAAI/bge-m3"
+    EMBEDDING_API_KEY: Optional[str] = None
+    EMBEDDING_API_BASE: Optional[str] = None
 
     # 网络搜索配置
-    SEARCH_API_KEY: Optional[str] = None
+    SEARCH_API_KEY: Optional[str] = "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"
 
     # 数据库配置
     DATABASE_URL: str = "sqlite:///./rag.db"

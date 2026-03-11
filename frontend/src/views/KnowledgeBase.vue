@@ -19,13 +19,32 @@
             @click="selectKb(kb)"
           >
             <div class="kb-header">
-              <h3>{{ kb.name }}</h3>
-              <button class="btn btn-danger btn-sm" @click.stop="deleteKb(kb.id)">删除</button>
+              <div v-if="editingKbId === kb.id" class="kb-name-edit">
+                <input
+                  v-model="editingName"
+                  ref="editKbInputRef"
+                  class="edit-kb-input"
+                  @blur="saveKbName(kb.id)"
+                  @keydown.enter="saveKbName(kb.id)"
+                  @keydown.esc="cancelKbEdit"
+                />
+              </div>
+              <h3 v-else>{{ kb.name }}</h3>
+              <div class="kb-actions">
+                <button
+                  v-if="editingKbId !== kb.id"
+                  class="btn-icon btn-edit"
+                  @click.stop="startEditKb(kb)"
+                  title="重命名"
+                >
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+                  </svg>
+                </button>
+                <button class="btn btn-danger btn-sm" @click.stop="deleteKb(kb.id)">删除</button>
+              </div>
             </div>
             <p v-if="kb.description" class="kb-description">{{ kb.description }}</p>
-            <div class="kb-footer">
-              <span class="doc-count">{{ kb.documents.length }} 个文档</span>
-            </div>
           </div>
           <div v-if="knowledgeBases.length === 0" class="empty-state">
             暂无知识库，点击"创建知识库"开始使用
@@ -49,7 +68,7 @@
             <h3>上传文件</h3>
             <FileUpload
               :kb-id="selectedKbId"
-              :disabled="false"
+              :disabled="!selectedKbId"
               ref="fileUploadRef"
               @upload="handleFileUpload"
             />
@@ -131,7 +150,7 @@ interface KnowledgeBase {
   id: number
   name: string
   description?: string
-  documents: any[]
+  created_at?: string
 }
 
 interface Document {
@@ -149,6 +168,11 @@ const loadingDocs = ref(false)
 const showCreateDialog = ref(false)
 const creating = ref(false)
 const fileUploadRef = ref()
+
+// 编辑知识库相关
+const editingKbId = ref<number>()
+const editingName = ref('')
+const editKbInputRef = ref<HTMLInputElement>()
 
 const newKbForm = ref({
   name: '',
@@ -227,6 +251,40 @@ const deleteKb = async (id: number) => {
     console.error('Failed to delete knowledge base:', error)
     alert(error.message || '删除知识库失败')
   }
+}
+
+// 开始编辑知识库
+const startEditKb = (kb: KnowledgeBase) => {
+  editingKbId.value = kb.id
+  editingName.value = kb.name
+  setTimeout(() => {
+    editKbInputRef.value?.focus()
+    editKbInputRef.value?.select()
+  }, 0)
+}
+
+// 保存知识库名称
+const saveKbName = async (kbId: number) => {
+  if (!editingName.value.trim()) {
+    cancelKbEdit()
+    return
+  }
+
+  try {
+    await knowledgeAPI.update(kbId, { name: editingName.value.trim() })
+    await loadKnowledgeBases()
+  } catch (error: any) {
+    console.error('Failed to rename knowledge base:', error)
+    alert(error.message || '重命名失败')
+  } finally {
+    cancelKbEdit()
+  }
+}
+
+// 取消编辑
+const cancelKbEdit = () => {
+  editingKbId.value = undefined
+  editingName.value = ''
 }
 
 const handleFileUpload = async (files: File[]) => {
@@ -354,6 +412,64 @@ onMounted(() => {
   margin: 0;
 }
 
+.kb-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.btn-icon {
+  width: 28px;
+  height: 28px;
+  padding: 4px;
+  border: none;
+  background-color: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+  color: var(--text-secondary);
+}
+
+.btn-icon svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.btn-icon:hover {
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+}
+
+.btn-edit:hover {
+  background-color: rgba(74, 144, 217, 0.1);
+  color: var(--primary-color);
+}
+
+.kb-name-edit {
+  width: 100%;
+}
+
+.edit-kb-input {
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 16px;
+  font-weight: 600;
+  font-family: inherit;
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+}
+
+.edit-kb-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
 .kb-description {
   font-size: 13px;
   color: var(--text-secondary);
@@ -362,16 +478,6 @@ onMounted(() => {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-}
-
-.kb-footer {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.doc-count {
-  font-size: 12px;
-  color: var(--text-secondary);
 }
 
 .empty-state {

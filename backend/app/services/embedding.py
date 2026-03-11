@@ -2,6 +2,7 @@
 from typing import List, Optional
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 
@@ -13,11 +14,18 @@ class EmbeddingService:
 
     def __init__(self):
         """初始化嵌入服务"""
+        # 使用嵌入专用的配置，如果未设置则使用聊天配置
+        embedding_api_key = settings.EMBEDDING_API_KEY or settings.OPENAI_API_KEY
+        embedding_api_base = settings.EMBEDDING_API_BASE or settings.OPENAI_API_BASE
+
+        # 尝试使用 OpenAI 兼容的嵌入服务
         self.embeddings = OpenAIEmbeddings(
             model=settings.EMBEDDING_MODEL,
-            openai_api_key=settings.OPENAI_API_KEY,
-            openai_api_base=settings.OPENAI_API_BASE
+            openai_api_key=embedding_api_key,
+            openai_api_base=embedding_api_base
         )
+        self._fallback_enabled = False  # 标记是否已启用回退
+
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=settings.CHUNK_SIZE,
             chunk_overlap=settings.CHUNK_OVERLAP,
@@ -38,6 +46,29 @@ class EmbeddingService:
             )
         return collection
 
+    def _ensure_embeddings(self) -> None:
+        """确保嵌入服务可用，如果失败则回退"""
+        if self._fallback_enabled:
+            return
+
+        try:
+            # 测试嵌入服务是否可用
+            _ = self.embeddings.embed_query("test")
+        except Exception as e:
+            print(f"OpenAI 嵌入服务失败: {e}")
+            print("回退到使用 HuggingFace 免费嵌入服务...")
+            try:
+                self.embeddings = HuggingFaceEmbeddings(
+                    model_name="sentence-transformers/all-MiniLM-L6-v2",
+                    model_kwargs={'device': 'cpu'},
+                    encode_kwargs={'normalize_embeddings': True}
+                )
+                self._fallback_enabled = True
+                print("已成功切换到本地嵌入服务")
+            except Exception as e2:
+                print(f"HuggingFace 嵌入服务也失败: {e2}")
+                raise RuntimeError("无法初始化嵌入服务，请检查 API 配置或安装 sentence-transformers")
+
     def split_text(self, text: str) -> List[str]:
         """将文本分割成块"""
         return self.text_splitter.split_text(text)
@@ -57,10 +88,17 @@ class EmbeddingService:
         if not chunks:
             return 0
 
+        self._ensure_embeddings()
         collection = self.get_or_create_collection(kb_id)
 
         # 生成嵌入向量
-        embeddings = self.embeddings.embed_documents(chunks)
+        try:
+            embeddings = self.embeddings.embed_documents(chunks)
+        except Exception as e:
+            print(f"嵌入失败，尝试回退: {e}")
+            self._fallback_enabled = False
+            self._ensure_embeddings()
+            embeddings = self.embeddings.embed_documents(chunks)
 
         # 添加到ChromaDB
         ids = [f"{kb_id}_{i}_{hash(chunk)}" for i, chunk in enumerate(chunks)]
@@ -85,7 +123,14 @@ class EmbeddingService:
         Returns:
             相似文档列表
         """
-        query_embedding = self.embeddings.embed_query(query)
+        self._ensure_embeddings()
+        try:
+            query_embedding = self.embeddings.embed_query(query)
+        except Exception as e:
+            print(f"查询嵌入失败，尝试回退: {e}")
+            self._fallback_enabled = False
+            self._ensure_embeddings()
+            query_embedding = self.embeddings.embed_query(query)
 
         results = []
         for kb_id in kb_ids:

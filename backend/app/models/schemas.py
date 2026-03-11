@@ -85,5 +85,14 @@ class ChatSessionListResponse(BaseModel):
     sessions: List[ChatSessionResponse]
 
 
+class SessionRenameRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255, description="会话标题")
+
+
+class KnowledgeBaseRenameRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255, description="知识库名称")
+    description: Optional[str] = None
+
+
 # Update forward references
 KnowledgeBaseWithDocuments.model_rebuild()

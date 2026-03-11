@@ -20,15 +20,41 @@
           :class="['session-item', { 'active': currentSessionId === session.id }]"
           @click="loadSession(session.id)"
         >
-          <div class="session-title">{{ session.title }}</div>
-          <div class="session-meta">
-            {{ formatDate(session.created_at) }}
+          <div class="session-content">
+            <div v-if="editingSessionId === session.id" class="session-edit">
+              <input
+                v-model="editingTitle"
+                ref="editInputRef"
+                class="edit-input"
+                @blur="saveSessionTitle(session.id)"
+                @keydown.enter="saveSessionTitle(session.id)"
+                @keydown.esc="cancelEdit"
+              />
+            </div>
+            <div v-else class="session-info">
+              <div class="session-title">{{ session.title }}</div>
+              <div class="session-meta">
+                {{ formatDate(session.created_at) }}
+              </div>
+            </div>
           </div>
-          <button class="btn-icon delete-session" @click.stop="deleteSession(session.id)">
-            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
-            </svg>
-          </button>
+          <div class="session-actions">
+            <button
+              v-if="editingSessionId !== session.id"
+              class="btn-icon edit-session"
+              @click.stop="startEditSession(session)"
+              title="重命名"
+            >
+              <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+              </svg>
+            </button>
+            <button class="btn-icon delete-session" @click.stop="deleteSession(session.id)">
+              <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+              </svg>
+            </button>
+          </div>
         </div>
         <div v-if="sessions.length === 0" class="empty-sessions">
           暂无对话历史
@@ -136,7 +162,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import MessageList from '../components/MessageList.vue'
-import { chatAPI } from '../api/client'
+import { chatAPI, knowledgeAPI } from '../api/client'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -166,6 +192,11 @@ const knowledgeBases = ref<any[]>([])
 const loadingKbs = ref(false)
 const hasUserInteracted = ref(false)
 
+// 编辑会话相关
+const editingSessionId = ref<number>()
+const editingTitle = ref('')
+const editInputRef = ref<HTMLInputElement>()
+
 // 从 localStorage 加载保存的状态
 const loadSavedState = () => {
   const saved = localStorage.getItem('chatState')
@@ -194,8 +225,7 @@ const saveState = () => {
 const loadKnowledgeBases = async () => {
   loadingKbs.value = true
   try {
-    const result = await fetch('/api/knowledge')
-    knowledgeBases.value = await result.json()
+    knowledgeBases.value = await knowledgeAPI.getAll()
   } catch (error) {
     console.error('Failed to load knowledge bases:', error)
   } finally {
@@ -244,6 +274,39 @@ const deleteSession = async (sessionId: number) => {
   } catch (error) {
     console.error('Failed to delete session:', error)
   }
+}
+
+// 开始编辑会话
+const startEditSession = (session: ChatSession) => {
+  editingSessionId.value = session.id
+  editingTitle.value = session.title
+  setTimeout(() => {
+    editInputRef.value?.focus()
+    editInputRef.value?.select()
+  }, 0)
+}
+
+// 保存会话标题
+const saveSessionTitle = async (sessionId: number) => {
+  if (!editingTitle.value.trim()) {
+    cancelEdit()
+    return
+  }
+
+  try {
+    await chatAPI.renameSession(sessionId, editingTitle.value.trim())
+    await loadSessions()
+  } catch (error) {
+    console.error('Failed to rename session:', error)
+  } finally {
+    cancelEdit()
+  }
+}
+
+// 取消编辑
+const cancelEdit = () => {
+  editingSessionId.value = undefined
+  editingTitle.value = ''
 }
 
 // 开启新对话
@@ -450,6 +513,9 @@ onUnmounted(() => {
   cursor: pointer;
   transition: all 0.2s;
   margin-bottom: 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .session-item:hover {
@@ -458,6 +524,11 @@ onUnmounted(() => {
 
 .session-item.active {
   background-color: rgba(74, 144, 217, 0.1);
+}
+
+.session-content {
+  flex: 1;
+  min-width: 0;
 }
 
 .session-title {
@@ -469,7 +540,26 @@ onUnmounted(() => {
   -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  padding-right: 24px;
+}
+
+.session-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.session-item:hover .session-actions {
+  opacity: 1;
+}
+
+.edit-session {
+  padding: 4px;
+}
+
+.edit-session:hover {
+  background-color: rgba(74, 144, 217, 0.1);
+  color: var(--primary-color);
 }
 
 .session-meta {
@@ -478,9 +568,6 @@ onUnmounted(() => {
 }
 
 .delete-session {
-  position: absolute;
-  top: 8px;
-  right: 8px;
   opacity: 0;
   transition: opacity 0.2s;
 }
@@ -492,6 +579,26 @@ onUnmounted(() => {
 .delete-session:hover {
   background-color: rgba(231, 76, 60, 0.1);
   color: var(--danger-color);
+}
+
+.session-edit {
+  width: 100%;
+}
+
+.edit-input {
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: inherit;
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+}
+
+.edit-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
 }
 
 .empty-sessions {

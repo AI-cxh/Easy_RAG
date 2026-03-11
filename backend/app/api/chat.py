@@ -7,9 +7,10 @@ import json
 
 from app.models.database import get_db
 from app.models.models import ChatSession, ChatMessage
-from app.models.schemas import ChatRequest, ChatResponse, ChatSessionResponse, ChatSessionListResponse
+from app.models.schemas import ChatRequest, ChatResponse, ChatSessionResponse, ChatSessionListResponse, SessionRenameRequest
 from app.services.rag import rag_service
 from app.services.search import get_search_service
+from app.services.embedding import embedding_service
 
 
 router = APIRouter()
@@ -33,11 +34,11 @@ async def stream_response(
                 "type": "chunk",
                 "content": chunk
             }
-            yield f"data: {json.dumps(data)}\n\n"
+            yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
     except Exception as e:
         # 发送错误信息
         error_data = {"type": "error", "message": str(e)}
-        yield f"data: {json.dumps(error_data)}\n\n"
+        yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
         return
 
     # 保存完整的助手消息到数据库
@@ -56,7 +57,7 @@ async def stream_response(
         "sources": sources,
         "search_results": search_results if use_web_search else None
     }
-    yield f"data: {json.dumps(end_data)}\n\n"
+    yield f"data: {json.dumps(end_data, ensure_ascii=False)}\n\n"
 
 
 @router.post("/chat")
@@ -88,7 +89,7 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
 
         # 获取聊天历史
         history = db.query(ChatMessage).filter(
-            ChatSession.id == session.id,
+            ChatMessage.session_id == session.id,
             ChatMessage.created_at < user_msg.created_at
         ).order_by(ChatMessage.created_at).all()
         chat_history = [{"role": msg.role, "content": msg.content} for msg in history]
@@ -100,7 +101,7 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
             context = rag_service.build_context(request.kb_ids, request.message)
             # 提取来源信息
             if context:
-                search_results = await rag_service.embedding_service.search_similar(request.kb_ids, request.message, k=4)
+                search_results = embedding_service.search_similar(request.kb_ids, request.message, k=4)
                 sources = [doc['metadata'].get('source', '未知') for doc in search_results]
 
         # 网络搜索
@@ -185,3 +186,14 @@ async def delete_session(session_id: int, db: Session = Depends(get_db)):
     db.delete(session)
     db.commit()
     return {"message": "会话已删除"}
+
+
+@router.put("/chat/sessions/{session_id}")
+async def rename_session(session_id: int, request: SessionRenameRequest, db: Session = Depends(get_db)):
+    """重命名会话"""
+    session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    session.title = request.title
+    db.commit()
+    return {"message": "会话已重命名", "id": session_id, "title": request.title}

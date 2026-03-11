@@ -1,5 +1,7 @@
 """文件解析工具：支持多种文件格式的文本提取"""
 import os
+import hashlib
+import time
 from typing import Optional, Tuple
 import pypdf
 from docx import Document
@@ -86,7 +88,6 @@ class FileParser:
             保存后的文件路径
         """
         # 创建子目录按照文件名哈希
-        import hashlib
         file_hash = hashlib.md5(filename.encode()).hexdigest()
         subdir = file_hash[:2]
 
@@ -102,6 +103,3 @@ class FileParser:
             await f.write(file_content)
 
         return file_path
-
-
-import time
