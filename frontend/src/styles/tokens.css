@@ -1,112 +1,136 @@
 /**
- * 设计令牌 - Design Tokens
- * 包含颜色、间距、圆角、阴影、字体、层级等基础变量
+ * Easy RAG Design Tokens
+ * 深色主题 - 现代简洁风格
  */
 
 :root {
-  /* 颜色系统 */
-  --color-primary: #4a90d9;
-  --color-primary-hover: #357abd;
-  --color-primary-light: rgba(74, 144, 217, 0.1);
+  /* ========== 背景系统 ========== */
+  --bg-primary: #0a0a0a;
+  --bg-secondary: #111111;
+  --bg-tertiary: #171717;
+  --bg-elevated: #1f1f1f;
+  --bg-hover: #262626;
+  --bg-active: #2a2a2a;
 
-  --color-success: #27ae60;
-  --color-success-hover: #219a52;
+  /* ========== 核心色彩系统 ========== */
+  --color-primary: #6366f1;
+  --color-primary-hover: #818cf8;
+  --color-primary-light: rgba(99, 102, 241, 0.15);
+  --color-primary-dark: #4f46e5;
 
-  --color-danger: #e74c3c;
-  --color-danger-hover: #c0392b;
-  --color-danger-light: rgba(231, 76, 60, 0.1);
+  /* 辅助色 */
+  --color-accent: #22d3ee;
+  --color-accent-light: rgba(34, 211, 238, 0.15);
 
-  --color-warning: #f39c12;
+  /* 语义色 */
+  --color-success: #22c55e;
+  --color-success-light: rgba(34, 197, 94, 0.15);
+  --color-warning: #f59e0b;
+  --color-warning-light: rgba(245, 158, 11, 0.15);
+  --color-danger: #ef4444;
+  --color-danger-hover: #dc2626;
+  --color-danger-light: rgba(239, 68, 68, 0.15);
 
-  /* 背景色 */
-  --bg-base: #f5f7fa;
-  --bg-card: #ffffff;
-  --bg-hover: #ecf0f1;
+  /* ========== 文字颜色 ========== */
+  --text-primary: #ffffff;
+  --text-secondary: #a1a1aa;
+  --text-muted: #52525b;
+  --text-inverse: #0a0a0a;
 
-  /* 文字颜色 */
-  --text-primary: #2c3e50;
-  --text-secondary: #7f8c8d;
-  --text-muted: #95a5a6;
-  --text-inverse: #ffffff;
+  /* ========== 边框系统 ========== */
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --border-default: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.12);
+  --border-focus: var(--color-primary);
 
-  /* 边框颜色 */
-  --border-base: #e1e4e8;
-  --border-light: #f0f2f5;
+  /* ========== 消息气泡 ========== */
+  --msg-user-bg: #6366f1;
+  --msg-user-text: #ffffff;
+  --msg-assistant-bg: #1f1f1f;
+  --msg-assistant-border: rgba(255, 255, 255, 0.08);
 
-  /* 消息气泡颜色 */
-  --msg-user-bg: #4a90d9;
-  --msg-assistant-bg: #f8f9fa;
+  /* ========== 间距系统 ========== */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
 
-  /* 间距系统 */
-  --spacing-xs: 4px;
-  --spacing-sm: 8px;
-  --spacing-md: 12px;
-  --spacing-lg: 16px;
-  --spacing-xl: 20px;
-  --spacing-2xl: 24px;
-  --spacing-3xl: 32px;
-
-  /* 圆角 */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
-  --radius-2xl: 16px;
+  /* ========== 圆角系统 ========== */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 24px;
   --radius-full: 9999px;
 
-  /* 阴影 */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.15);
+  /* ========== 阴影系统 ========== */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.6);
 
-  /* 字体 */
-  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-family-mono: 'Monaco', 'Menlo', 'Consolas', monospace;
+  /* ========== 字体系统 ========== */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
 
   /* 字号 */
-  --font-size-xs: 12px;
-  --font-size-sm: 13px;
-  --font-size-base: 14px;
-  --font-size-lg: 16px;
-  --font-size-xl: 18px;
-  --font-size-2xl: 20px;
-  --font-size-3xl: 24px;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+
+  /* 字重 */
+  --font-normal: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
 
   /* 行高 */
-  --line-height-tight: 1.25;
-  --line-height-normal: 1.5;
-  --line-height-relaxed: 1.6;
-  --line-height-loose: 1.8;
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.625;
 
-  /* 层级 */
+  /* ========== 层级系统 ========== */
+  --z-base: 0;
   --z-dropdown: 100;
   --z-sticky: 200;
-  --z-modal: 1000;
-  --z-tooltip: 1100;
+  --z-overlay: 300;
+  --z-modal: 400;
+  --z-toast: 500;
 
-  /* 过渡 */
-  --transition-fast: 0.15s ease;
-  --transition-normal: 0.2s ease;
-  --transition-slow: 0.3s ease;
+  /* ========== 动效系统 ========== */
+  --duration-fast: 150ms;
+  --duration-normal: 200ms;
+  --duration-slow: 300ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 
-  /* 响应式断点 */
-  --breakpoint-sm: 480px;
-  --breakpoint-md: 768px;
-  --breakpoint-lg: 1024px;
-  --breakpoint-xl: 1200px;
-}
+  /* ========== 布局 ========== */
+  --sidebar-width: 280px;
+  --header-height: 56px;
+  --input-max-width: 768px;
 
-/* 兼容旧变量名 */
-:root {
+  /* ========== 兼容旧变量名 ========== */
   --primary-color: var(--color-primary);
   --primary-hover: var(--color-primary-hover);
-  --bg-color: var(--bg-base);
-  --card-bg: var(--bg-card);
-  --text-primary: var(--text-primary);
-  --text-secondary: var(--text-secondary);
-  --border-color: var(--border-base);
+  --primary-light: var(--color-primary-light);
+  --bg-color: var(--bg-primary);
+  --card-bg: var(--bg-elevated);
+  --border-color: var(--border-default);
   --success-color: var(--color-success);
   --danger-color: var(--color-danger);
   --user-msg-bg: var(--msg-user-bg);
   --assistant-msg-bg: var(--msg-assistant-bg);
+  --bg-glass: var(--bg-elevated);
+  --bg-glass-blur: blur(12px);
+  --bg-card-solid: var(--bg-elevated);
+  --bg-hover: var(--bg-hover);
 }

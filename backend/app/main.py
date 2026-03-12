@@ -6,7 +6,7 @@ import os
 
 from app.config import settings
 from app.models.database import init_db
-from app.api import chat, knowledge, upload
+from app.api import chat, knowledge, upload, app_settings as settings_api
 
 # 创建FastAPI应用
 app = FastAPI(
@@ -28,6 +28,7 @@ app.add_middleware(
 app.include_router(chat.router, prefix="/api", tags=["聊天"])
 app.include_router(knowledge.router, prefix="/api", tags=["知识库"])
 app.include_router(upload.router, prefix="/api", tags=["文件上传"])
+app.include_router(settings_api.router, prefix="/api", tags=["设置"])
 
 # 启动事件
 @app.on_event("startup")

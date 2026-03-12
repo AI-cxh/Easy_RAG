@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     EMBEDDING_API_KEY: Optional[str] = None
     EMBEDDING_API_BASE: Optional[str] = None
 
+    # 重排序模型配置
+    RERANK_MODEL: str = "BAAI/bge-reranker-v2-m3"
+    RERANK_API_KEY: Optional[str] = None
+    RERANK_API_BASE: Optional[str] = None
+
     # 网络搜索配置
     SEARCH_API_KEY: Optional[str] = "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"
 

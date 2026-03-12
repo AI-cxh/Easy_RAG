@@ -21,7 +21,7 @@
         <div class="message-content" v-html="renderMessage(message.content)" />
         <div v-if="message.sources && message.sources.length" class="message-sources">
           <svg class="source-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+            <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
           </svg>
           <span class="source-label">来源:</span>
           {{ message.sources.join(', ') }}
@@ -57,7 +57,7 @@
 import { marked } from 'marked'
 import hljs from 'highlight.js'
 import DOMPurify from 'dompurify'
-import 'highlight.js/styles/github.css'
+import 'highlight.js/styles/github-dark.css'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -122,18 +122,14 @@ const renderMessage = (content: string) => {
 .message-list {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: var(--space-5);
+  padding: var(--space-6);
 }
 
 .message {
   display: flex;
-  gap: 12px;
-  animation: fadeIn 0.3s ease-in;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  gap: var(--space-3);
+  animation: fadeIn var(--duration-normal) var(--ease-out);
 }
 
 .message.user {
@@ -147,20 +143,21 @@ const renderMessage = (content: string) => {
 .avatar {
   width: 36px;
   height: 36px;
-  border-radius: 50%;
+  border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .user-avatar {
-  background-color: #6c757d;
+  background: linear-gradient(135deg, #64748b 0%, #475569 100%);
   color: white;
 }
 
 .assistant-avatar {
-  background-color: var(--primary-color);
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-accent) 100%);
   color: white;
+  box-shadow: var(--shadow-glow-primary);
 }
 
 .avatar svg {
@@ -170,40 +167,41 @@ const renderMessage = (content: string) => {
 }
 
 .message-body {
-  max-width: 80%;
+  max-width: 75%;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .message-content {
-  padding: 12px 16px;
-  border-radius: 16px;
+  padding: var(--space-4);
+  border-radius: var(--radius-xl);
   word-wrap: break-word;
   overflow-wrap: break-word;
-  line-height: 1.6;
+  line-height: var(--leading-relaxed);
+  font-size: var(--text-base);
 }
 
 .message.user .message-content {
-  background-color: var(--user-msg-bg);
-  color: white;
-  border-bottom-right-radius: 4px;
+  background: var(--msg-user-bg);
+  color: var(--msg-user-text);
+  border-bottom-right-radius: var(--radius-sm);
 }
 
 .message.assistant .message-content {
-  background-color: var(--assistant-msg-bg);
-  border: 1px solid var(--border-color);
-  border-bottom-left-radius: 4px;
+  background: var(--msg-assistant-bg);
+  border: 1px solid var(--msg-assistant-border);
+  border-bottom-left-radius: var(--radius-sm);
 }
 
 .message-sources,
 .message-search-results {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--text-secondary);
-  padding: 8px 0;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  padding: var(--space-2) 0;
 }
 
 .source-icon,
@@ -214,50 +212,93 @@ const renderMessage = (content: string) => {
   flex-shrink: 0;
 }
 
+.source-label,
+.search-label {
+  font-weight: var(--font-medium);
+}
+
 .search-results {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .search-result-link {
-  color: var(--primary-color);
+  color: var(--color-primary);
   text-decoration: none;
-  opacity: 0.9;
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-primary-light);
+  border-radius: var(--radius-sm);
+  transition: all var(--duration-fast);
 }
 
 .search-result-link:hover {
-  text-decoration: underline;
-  opacity: 1;
+  background: var(--color-primary);
+  color: white;
 }
 
 /* Markdown 样式覆盖 */
-.message :deep(.markdown) {
-  font-size: 14px;
-}
-
 .message :deep(pre) {
-  background-color: rgba(0, 0, 0, 0.1);
+  margin: var(--space-3) 0;
+  padding: var(--space-4);
+  background: #1e293b;
+  border-radius: var(--radius-lg);
+  overflow-x: auto;
 }
 
-.message.assistant :deep(pre) {
-  background-color: #f6f8fa;
+.message.user :deep(pre) {
+  background: rgba(0, 0, 0, 0.2);
 }
 
 .message :deep(code) {
-  background-color: rgba(0, 0, 0, 0.15);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
 }
 
-.message.assistant :deep(code) {
-  background-color: #f6f8fa;
+.message :deep(p) {
+  margin: 0 0 var(--space-3);
+}
+
+.message :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.message :deep(ul),
+.message :deep(ol) {
+  margin: var(--space-2) 0;
+  padding-left: var(--space-5);
+}
+
+.message :deep(li) {
+  margin-bottom: var(--space-1);
 }
 
 .message :deep(a) {
   color: inherit;
   text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
-.message :deep(a:hover) {
-  text-decoration: none;
+.message.user :deep(a) {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.message.assistant :deep(a) {
+  color: var(--color-primary);
+}
+
+@media (max-width: 768px) {
+  .message-list {
+    padding: var(--space-4);
+    gap: var(--space-4);
+  }
+
+  .message-body {
+    max-width: 85%;
+  }
+
+  .message-content {
+    padding: var(--space-3);
+  }
 }
 </style>

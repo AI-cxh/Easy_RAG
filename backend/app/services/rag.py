@@ -1,10 +1,11 @@
 """RAG核心服务：负责检索增强生成"""
 from typing import List, Optional, Dict, AsyncGenerator
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
 from app.config import settings
 from app.services.embedding import embedding_service
+from app.services.rerank import rerank_service
 
 
 class RAGService:
@@ -19,13 +20,14 @@ class RAGService:
             openai_api_base=settings.OPENAI_API_BASE
         )
 
-    def build_context(self, kb_ids: List[int], query: str) -> str:
+    def build_context(self, kb_ids: List[int], query: str, use_rerank: bool = True) -> str:
         """
         从知识库构建上下文
 
         Args:
             kb_ids: 知识库ID列表
             query: 查询文本
+            use_rerank: 是否使用重排序
 
         Returns:
             上下文字符串
@@ -33,15 +35,22 @@ class RAGService:
         if not kb_ids:
             return ""
 
-        similar_docs = embedding_service.search_similar(kb_ids, query, k=4)
+        # 先检索更多文档，用于重排序
+        retrieve_k = 8 if use_rerank and rerank_service.is_enabled() else 4
+        similar_docs = embedding_service.search_similar(kb_ids, query, k=retrieve_k)
 
         if not similar_docs:
             return ""
 
+        # 重排序
+        if use_rerank and rerank_service.is_enabled():
+            similar_docs = rerank_service.rerank_sync(query, similar_docs, top_k=4)
+
         context_parts = []
         for i, doc in enumerate(similar_docs, 1):
             source_name = doc['metadata'].get('source', '未知来源')
-            context_parts.append(f"[文档{i}] 来源: {source_name}\n内容: {doc['content']}")
+            rerank_info = f" (相关度: {doc.get('rerank_score', 0):.3f})" if 'rerank_score' in doc else ""
+            context_parts.append(f"[文档{i}] 来源: {source_name}{rerank_info}\n内容: {doc['content']}")
 
         return "\n\n---\n\n".join(context_parts)
 
@@ -93,7 +102,7 @@ class RAGService:
                 if msg['role'] == 'user':
                     messages.append(HumanMessage(content=msg['content']))
                 elif msg['role'] == 'assistant':
-                    messages.append(SystemMessage(content=msg['content']))
+                    messages.append(AIMessage(content=msg['content']))
 
         # 添加当前查询
         messages.append(HumanMessage(content=query))
@@ -161,7 +170,7 @@ class RAGService:
                 if msg['role'] == 'user':
                     messages.append(HumanMessage(content=msg['content']))
                 elif msg['role'] == 'assistant':
-                    messages.append(SystemMessage(content=msg['content']))
+                    messages.append(AIMessage(content=msg['content']))
 
         # 添加当前查询
         messages.append(HumanMessage(content=query))

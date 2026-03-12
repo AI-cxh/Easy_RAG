@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:9000/api'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api'
 
 // 知识库API
 export const knowledgeAPI = {
@@ -100,7 +100,21 @@ export const uploadAPI = {
         if (xhr.status >= 200 && xhr.status < 300) {
           resolve(xhr.response ? JSON.parse(xhr.response) : {})
         } else {
-          reject(new Error(xhr.statusText || '上传文件失败'))
+          // 尝试解析错误响应
+          let errorMsg = '上传文件失败'
+          try {
+            const errorResponse = xhr.response ? JSON.parse(xhr.response) : null
+            if (errorResponse?.detail) {
+              errorMsg = errorResponse.detail
+            } else if (xhr.statusText) {
+              errorMsg = xhr.statusText
+            }
+          } catch {
+            if (xhr.statusText) {
+              errorMsg = xhr.statusText
+            }
+          }
+          reject(new Error(errorMsg))
         }
       }
 
@@ -252,6 +266,35 @@ export const chatAPI = {
     if (!response.ok) {
       const error = await response.text()
       throw new Error(error || '请求失败')
+    }
+    return response.json()
+  }
+}
+
+// 设置API
+export const settingsAPI = {
+  // 获取设置
+  get: async () => {
+    const response = await fetch(`${API_BASE_URL}/settings`)
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  },
+
+  // 保存设置
+  save: async (settings: any) => {
+    const response = await fetch(`${API_BASE_URL}/settings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(settings)
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '保存失败')
     }
     return response.json()
   }

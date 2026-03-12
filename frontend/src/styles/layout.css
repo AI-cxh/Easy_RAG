@@ -1,20 +1,30 @@
 /**
- * 布局样式 - Layout Styles
- * 包含页头、双栏布局、容器、响应式断点
+ * Easy RAG Layout Styles
+ * 深色主题 - 现代简洁风格
  */
 
-/* 基础重置 */
-* {
+/* ========== 基础重置与全局样式 ========== */
+*,
+*::before,
+*::after {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 body {
-  font-family: var(--font-family);
-  background-color: var(--bg-base);
+  font-family: var(--font-sans);
+  background: var(--bg-primary);
   color: var(--text-primary);
-  line-height: var(--line-height-relaxed);
+  line-height: 1.5;
+  min-height: 100vh;
+  overflow-x: hidden;
 }
 
 #app {
@@ -23,165 +33,190 @@ body {
   flex-direction: column;
 }
 
-/* 页头布局 */
-.app-header {
-  background-color: var(--bg-card);
-  box-shadow: var(--shadow-sm);
-  position: sticky;
-  top: 0;
-  z-index: var(--z-sticky);
-}
-
-.app-header-content {
-  max-width: var(--breakpoint-xl);
-  margin: 0 auto;
-  padding: 0 var(--spacing-2xl);
-  height: 60px;
+/* ========== 聊天布局 ========== */
+.chat-layout {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  height: 100vh;
+  overflow: hidden;
 }
 
-.app-logo {
-  font-size: var(--font-size-3xl);
-  font-weight: 700;
-  color: var(--color-primary);
-}
-
-.app-nav {
-  display: flex;
-  gap: var(--spacing-2xl);
-}
-
-.app-nav-link {
-  text-decoration: none;
-  color: var(--text-secondary);
-  padding: var(--spacing-sm) 0;
-  position: relative;
-  transition: color var(--transition-normal);
-}
-
-.app-nav-link:hover {
-  color: var(--color-primary);
-}
-
-.app-nav-link.active {
-  color: var(--color-primary);
-}
-
-.app-nav-link.active::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background-color: var(--color-primary);
-}
-
-/* 主内容区 */
-.app-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.app-main-container {
-  max-width: var(--breakpoint-xl);
-  margin: 0 auto;
-  padding: var(--spacing-2xl);
-  min-height: calc(100vh - 60px);
-  width: 100%;
-}
-
-/* 双栏布局 */
-.layout-two-column {
-  display: grid;
-  grid-template-columns: 280px 1fr;
-  gap: var(--spacing-xl);
-  height: 100%;
-}
-
-.layout-sidebar {
-  background-color: var(--bg-card);
-  border-right: 1px solid var(--border-base);
+/* 侧边栏 */
+.chat-sidebar {
+  width: var(--sidebar-width);
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
 }
 
-.layout-content {
+.sidebar-header {
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-2);
+}
+
+.sidebar-footer {
+  padding: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* 主内容区 */
+.chat-main {
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  min-width: 0;
+  background: var(--bg-primary);
 }
 
-/* 全屏布局（无最大宽度限制） */
-.layout-fullscreen {
-  height: 100vh;
-  width: 100%;
+.chat-header {
+  height: var(--header-height);
+  padding: 0 var(--space-6);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
 }
 
-/* 响应式布局 */
-@media (max-width: 1024px) {
-  .layout-two-column {
-    grid-template-columns: 240px 1fr;
-  }
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-6);
 }
 
+.chat-input-area {
+  padding: var(--space-4) var(--space-6) var(--space-6);
+  background: var(--bg-primary);
+}
+
+.chat-input-wrapper {
+  max-width: var(--input-max-width);
+  margin: 0 auto;
+}
+
+/* ========== 页面容器 ========== */
+.page-container {
+  padding: var(--space-6);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-6);
+}
+
+.page-title {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+}
+
+/* ========== 卡片 ========== */
+.card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+
+.card-title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+}
+
+/* ========== 响应式布局 ========== */
 @media (max-width: 768px) {
-  .app-header-content {
-    padding: 0 var(--spacing-lg);
-  }
-
-  .app-main-container {
-    padding: var(--spacing-lg);
-  }
-
-  .layout-two-column {
-    grid-template-columns: 1fr;
-  }
-
-  .layout-sidebar {
+  .chat-sidebar {
     position: fixed;
     left: 0;
-    top: 60px;
+    top: 0;
     bottom: 0;
-    width: 280px;
+    z-index: var(--z-modal);
     transform: translateX(-100%);
-    transition: transform var(--transition-slow);
-    z-index: var(--z-dropdown);
+    transition: transform var(--duration-normal) var(--ease-out);
   }
 
-  .layout-sidebar.open {
+  .chat-sidebar.open {
     transform: translateX(0);
   }
 
-  .layout-sidebar-overlay {
-    display: none;
+  .sidebar-overlay {
     position: fixed;
     inset: 0;
-    top: 60px;
-    background-color: rgba(0, 0, 0, 0.5);
-    z-index: calc(var(--z-dropdown) - 1);
+    background: rgba(0, 0, 0, 0.5);
+    z-index: calc(var(--z-modal) - 1);
+    opacity: 0;
+    visibility: hidden;
+    transition: all var(--duration-normal);
   }
 
-  .layout-sidebar-overlay.open {
-    display: block;
+  .sidebar-overlay.open {
+    opacity: 1;
+    visibility: visible;
+  }
+
+  .chat-header {
+    padding: 0 var(--space-4);
+  }
+
+  .chat-messages {
+    padding: var(--space-4);
+  }
+
+  .chat-input-area {
+    padding: var(--space-3) var(--space-4) var(--space-4);
+  }
+
+  .page-container {
+    padding: var(--space-4);
   }
 }
 
-@media (max-width: 480px) {
-  .app-header-content {
-    padding: 0 var(--spacing-md);
-  }
+/* ========== 动画 ========== */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 
-  .app-logo {
-    font-size: var(--font-size-xl);
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
   }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
 
-  .app-nav {
-    gap: var(--spacing-lg);
-  }
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.animate-fade-in {
+  animation: fadeIn var(--duration-normal) var(--ease-out);
+}
+
+.animate-slide-up {
+  animation: slideUp var(--duration-normal) var(--ease-out);
 }

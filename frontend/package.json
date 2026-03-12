@@ -8,6 +8,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fontsource-variable/jetbrains-mono": "^5.2.8",
+    "@fontsource/inter": "^5.2.8",
     "axios": "^1.6.2",
     "dompurify": "^3.3.3",
     "highlight.js": "^11.9.0",
