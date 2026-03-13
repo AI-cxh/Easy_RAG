@@ -48,9 +48,10 @@
 
         <div v-else class="session-list">
           <div
-            v-for="session in sessions"
+            v-for="(session, index) in sessions"
             :key="session.id"
             :class="['session-item', { active: currentSessionId === session.id }]"
+            :style="{ animationDelay: `${index * 30}ms` }"
             @click="handleSelectSession(session.id)"
           >
             <div class="session-content">
@@ -84,31 +85,41 @@
       <!-- 消息区域 -->
       <div class="chat-messages" ref="messagesRef">
         <div v-if="!hasUserInteracted" class="welcome-screen">
-          <div class="welcome-icon">
-            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
-            </svg>
-          </div>
           <h2 class="welcome-title">欢迎使用 Easy RAG</h2>
           <p class="welcome-desc">基于知识库的智能问答助手</p>
           <div class="welcome-tips">
-            <div class="tip-item">
-              <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9H9V9h10v2zm-4 4H9v-2h6v2zm4-8H9V5h10v2z"/>
-              </svg>
-              <span>上传文档构建知识库</span>
+            <div class="tip-item animate-slide-up stagger-1">
+              <div class="tip-icon">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9H9V9h10v2zm-4 4H9v-2h6v2zm4-8H9V5h10v2z"/>
+                </svg>
+              </div>
+              <div class="tip-text">
+                <span class="tip-title">上传文档</span>
+                <span class="tip-desc">构建专属知识库</span>
+              </div>
             </div>
-            <div class="tip-item">
-              <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
-              </svg>
-              <span>选择知识库进行问答</span>
+            <div class="tip-item animate-slide-up stagger-2">
+              <div class="tip-icon tip-icon-accent">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+                </svg>
+              </div>
+              <div class="tip-text">
+                <span class="tip-title">智能检索</span>
+                <span class="tip-desc">精准定位答案</span>
+              </div>
             </div>
-            <div class="tip-item">
-              <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
-              </svg>
-              <span>开启网络搜索获取更多信息</span>
+            <div class="tip-item animate-slide-up stagger-3">
+              <div class="tip-icon tip-icon-warm">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                </svg>
+              </div>
+              <div class="tip-text">
+                <span class="tip-title">网络搜索</span>
+                <span class="tip-desc">获取更多信息</span>
+              </div>
             </div>
           </div>
         </div>
@@ -119,28 +130,62 @@
             :key="index"
             :class="['message', msg.role]"
           >
-            <div class="message-avatar">
-              <span v-if="msg.role === 'user'">U</span>
-              <svg v-else viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
-              </svg>
-            </div>
-            <div class="message-content">
-              <div class="message-text" :class="{ 'markdown': msg.role === 'assistant' }">
-                <template v-if="msg.role === 'assistant'">
-                  <div v-html="renderMarkdown(msg.content)"></div>
-                  <span v-if="!msg.content && isSending" class="typing-indicator">
+            <!-- 用户消息：靠右显示，无头像 -->
+            <template v-if="msg.role === 'user'">
+              <div class="message-content">
+                <div class="message-wrapper">
+                  <div class="message-text">{{ msg.content }}</div>
+                  <!-- 用户消息操作按钮 -->
+                  <div class="message-actions">
+                    <button class="action-icon" @click="editMessage(index)" title="编辑">
+                      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+                      </svg>
+                    </button>
+                    <button class="action-icon" @click="copyMessage(msg.content)" title="复制">
+                      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </template>
+
+            <!-- 助手消息：左侧显示，有头像 -->
+            <template v-else>
+              <div class="message-avatar">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                </svg>
+              </div>
+              <div class="message-content">
+                <div class="message-wrapper">
+                  <div class="message-text markdown" v-html="renderMarkdown(msg.content)"></div>
+                  <span v-if="!msg.content && isSending && index === messages.length - 1" class="typing-indicator">
                     <span></span><span></span><span></span>
                   </span>
-                </template>
-                <template v-else>{{ msg.content }}</template>
+                  <!-- 来源信息 -->
+                  <div v-if="msg.sources?.length" class="message-sources">
+                    <span class="sources-label">参考来源:</span>
+                    <span v-for="(source, i) in msg.sources" :key="i" class="source-tag">{{ source }}</span>
+                  </div>
+                  <!-- 助手消息操作按钮 -->
+                  <div v-if="msg.content && !isSending" class="message-actions">
+                    <button class="action-icon" @click="copyMessage(msg.content)" title="复制">
+                      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+                      </svg>
+                    </button>
+                    <button class="action-icon" @click="regenerateResponse(index)" title="再次回答">
+                      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
               </div>
-              <!-- 来源信息 -->
-              <div v-if="msg.sources?.length" class="message-sources">
-                <span class="sources-label">参考来源:</span>
-                <span v-for="(source, i) in msg.sources" :key="i" class="source-tag">{{ source }}</span>
-              </div>
-            </div>
+            </template>
           </div>
         </div>
       </div>
@@ -148,18 +193,6 @@
       <!-- 输入区域 -->
       <div class="chat-input-area">
         <div class="input-wrapper">
-          <!-- 知识库选择 -->
-          <div class="kb-selector">
-            <button
-              v-for="kb in knowledgeBases"
-              :key="kb.id"
-              :class="['kb-tag', { active: selectedKbIds.includes(kb.id) }]"
-              @click="toggleKb(kb.id)"
-            >
-              {{ kb.name }}
-            </button>
-          </div>
-
           <!-- 输入框 -->
           <div class="input-box">
             <textarea
@@ -171,30 +204,116 @@
               @input="autoResize"
               ref="inputRef"
             ></textarea>
-            <div class="input-actions">
-              <button
-                :class="['action-btn', { active: useWebSearch }]"
-                @click="useWebSearch = !useWebSearch"
-                title="网络搜索"
-              >
-                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
-                </svg>
-              </button>
-              <button
-                class="send-btn"
-                :disabled="!inputMessage.trim() || isSending"
-                @click="handleSend"
-              >
-                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-                </svg>
-              </button>
+            <!-- 底部工具栏 -->
+            <div class="input-toolbar">
+              <div class="toolbar-left">
+                <!-- 知识库选择 -->
+                <div class="kb-dropdown">
+                  <button
+                    class="toolbar-btn"
+                    :class="{ active: selectedKbIds.length > 0 }"
+                    @click="showKbDropdown = !showKbDropdown"
+                  >
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9H9V9h10v2zm-4 4H9v-2h6v2zm4-8H9V5h10v2z"/>
+                    </svg>
+                    <span>{{ selectedKbIds.length > 0 ? `已选 ${selectedKbIds.length} 个` : '知识库' }}</span>
+                    <svg class="dropdown-arrow" :class="{ open: showKbDropdown }" viewBox="0 0 24 24">
+                      <path d="M7 10l5 5 5-5z"/>
+                    </svg>
+                  </button>
+                  <!-- 向上展开的下拉列表 -->
+                  <div v-if="showKbDropdown" class="kb-dropdown-menu">
+                    <div class="dropdown-header">选择知识库</div>
+                    <div v-if="knowledgeBases.length === 0" class="dropdown-empty">
+                      暂无知识库
+                    </div>
+                    <div v-else class="dropdown-list">
+                      <label
+                        v-for="kb in knowledgeBases"
+                        :key="kb.id"
+                        class="dropdown-item"
+                        :class="{ selected: selectedKbIds.includes(kb.id) }"
+                      >
+                        <input
+                          type="checkbox"
+                          :checked="selectedKbIds.includes(kb.id)"
+                          @change="toggleKb(kb.id)"
+                        />
+                        <span class="item-check"></span>
+                        <span class="item-name">{{ kb.name }}</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+                <!-- 网络搜索 -->
+                <button
+                  class="toolbar-btn"
+                  :class="{ active: useWebSearch }"
+                  @click="useWebSearch = !useWebSearch"
+                  title="网络搜索"
+                >
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                  </svg>
+                  <span>联网搜索</span>
+                </button>
+              </div>
+              <div class="toolbar-right">
+                <button
+                  class="send-btn"
+                  :disabled="!inputMessage.trim() || isSending"
+                  @click="handleSend"
+                >
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </div>
     </main>
+
+    <!-- 复制成功提示 -->
+    <Transition name="toast">
+      <div v-if="copySuccess" class="copy-toast">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+        </svg>
+        <span>已复制到剪贴板</span>
+      </div>
+    </Transition>
+
+    <!-- 重命名对话框 -->
+    <Teleport to="body">
+      <div v-if="editingSessionId" class="dialog-overlay" @click.self="cancelSessionEdit">
+        <div class="dialog">
+          <div class="dialog-header">
+            <h3 class="dialog-title">重命名对话</h3>
+            <button class="dialog-close" @click="cancelSessionEdit">&times;</button>
+          </div>
+          <div class="dialog-body">
+            <div class="form-group">
+              <label class="form-label">名称</label>
+              <input
+                v-model="editingSessionName"
+                type="text"
+                class="input"
+                placeholder="输入新名称"
+                @keydown.enter="saveSessionName(editingSessionId!)"
+                ref="renameInputRef"
+              />
+            </div>
+          </div>
+          <div class="dialog-footer">
+            <button class="btn btn-secondary" @click="cancelSessionEdit">取消</button>
+            <button class="btn btn-primary" @click="saveSessionName(editingSessionId!)">保存</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -233,6 +352,11 @@ const selectedKbIds = ref<number[]>([])
 const useWebSearch = ref(false)
 const knowledgeBases = ref<any[]>([])
 const inputMessage = ref('')
+const showKbDropdown = ref(false)
+const copySuccess = ref(false)
+const editingSessionId = ref<number>()
+const editingSessionName = ref('')
+const renameInputRef = ref<HTMLInputElement>()
 
 // Markdown 渲染
 const renderMarkdown = (content: string) => {
@@ -351,19 +475,33 @@ const deleteSession = async (sessionId: number) => {
 }
 
 const startRename = (session: ChatSession) => {
-  const newTitle = prompt('重命名对话', session.title)
-  if (newTitle && newTitle.trim()) {
-    renameSession(session.id, newTitle.trim())
-  }
+  editingSessionId.value = session.id
+  editingSessionName.value = session.title
+  nextTick(() => {
+    renameInputRef.value?.focus()
+    renameInputRef.value?.select()
+  })
 }
 
-const renameSession = async (sessionId: number, title: string) => {
+const saveSessionName = async (sessionId: number) => {
+  if (!editingSessionName.value.trim()) {
+    cancelSessionEdit()
+    return
+  }
+
   try {
-    await chatAPI.renameSession(sessionId, title)
+    await chatAPI.renameSession(sessionId, editingSessionName.value.trim())
     await loadSessions()
   } catch (error) {
     console.error('Failed to rename session:', error)
+  } finally {
+    cancelSessionEdit()
   }
+}
+
+const cancelSessionEdit = () => {
+  editingSessionId.value = undefined
+  editingSessionName.value = ''
 }
 
 const newChat = () => {
@@ -458,6 +596,112 @@ const handleSend = async () => {
   }
 }
 
+// 复制消息
+const copyMessage = async (content: string) => {
+  try {
+    await navigator.clipboard.writeText(content)
+    showCopySuccess()
+  } catch (error) {
+    console.error('Copy failed:', error)
+    // 降级处理
+    const textarea = document.createElement('textarea')
+    textarea.value = content
+    document.body.appendChild(textarea)
+    textarea.select()
+    document.execCommand('copy')
+    document.body.removeChild(textarea)
+    showCopySuccess()
+  }
+}
+
+// 显示复制成功提示
+const showCopySuccess = () => {
+  copySuccess.value = true
+  setTimeout(() => {
+    copySuccess.value = false
+  }, 1500)
+}
+
+// 编辑用户消息
+const editMessage = (index: number) => {
+  const msg = messages.value[index]
+  if (msg.role !== 'user') return
+
+  inputMessage.value = msg.content
+  autoResize()
+  nextTick(() => {
+    inputRef.value?.focus()
+  })
+
+  // 删除该消息及之后的所有消息，准备重新对话
+  if (index < messages.value.length - 1) {
+    messages.value = messages.value.slice(0, index)
+  } else {
+    messages.value.pop()
+  }
+  saveState()
+}
+
+// 再次生成回答
+const regenerateResponse = async (assistantIndex: number) => {
+  // 找到对应的用户消息
+  const userIndex = assistantIndex - 1
+  if (userIndex < 0 || messages.value[userIndex].role !== 'user') return
+
+  const userMessage = messages.value[userIndex].content
+
+  // 删除当前及之后的消息
+  messages.value = messages.value.slice(0, userIndex + 1)
+  saveState()
+
+  // 重新发送
+  isSending.value = true
+
+  try {
+    const newAssistantIndex = messages.value.length
+    messages.value.push({
+      role: 'assistant',
+      content: '',
+      sources: undefined,
+      search_results: undefined
+    })
+    scrollToBottom()
+
+    const result = await chatAPI.sendMessageStream(
+      {
+        message: userMessage,
+        session_id: currentSessionId.value,
+        kb_ids: selectedKbIds.value,
+        use_web_search: useWebSearch.value
+      },
+      (chunk) => {
+        if (chunk.type === 'chunk' && chunk.content) {
+          messages.value[newAssistantIndex].content += chunk.content
+          scrollToBottom()
+        } else if (chunk.type === 'error') {
+          console.error('Stream error:', chunk.message)
+          messages.value[newAssistantIndex].content = '抱歉，发生了错误，请稍后重试。'
+        }
+      }
+    )
+
+    currentSessionId.value = result.sessionId
+    messages.value[newAssistantIndex].sources = result.sources
+    messages.value[newAssistantIndex].search_results = result.searchResults
+    saveState()
+
+    await loadSessions()
+  } catch (error) {
+    console.error('Regenerate error:', error)
+    messages.value.push({
+      role: 'assistant',
+      content: '抱歉，发生了错误，请稍后重试。'
+    })
+  } finally {
+    isSending.value = false
+  }
+}
+
 // 初始化
 onMounted(() => {
   loadSavedState()
@@ -475,58 +719,79 @@ onMounted(() => {
 
 /* 左侧固定导航栏 */
 .nav-rail {
-  width: 56px;
+  width: var(--nav-rail-width);
   background: var(--bg-secondary);
   border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: var(--space-3) 0;
+  padding: var(--space-4) 0;
   gap: var(--space-2);
   flex-shrink: 0;
 }
 
 .nav-rail-btn {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: transparent;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all var(--duration-fast);
+  transition: all var(--duration-normal) var(--ease-soft);
   text-decoration: none;
   position: relative;
 }
 
+.nav-rail-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--color-primary-light);
+  opacity: 0;
+  transform: scale(0.8);
+  transition: all var(--duration-normal) var(--ease-spring);
+}
+
 .nav-rail-btn:hover {
-  background: var(--bg-hover);
   color: var(--text-primary);
+}
+
+.nav-rail-btn:hover::before {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .nav-rail-btn.router-link-active {
   color: var(--color-primary);
-  background: var(--color-primary-light);
+}
+
+.nav-rail-btn.router-link-active::before {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .nav-rail-btn svg {
   width: 22px;
   height: 22px;
   fill: currentColor;
+  position: relative;
+  z-index: 1;
 }
 
 /* 侧边栏 */
 .chat-sidebar {
-  width: 280px;
+  width: var(--sidebar-width);
   background: var(--bg-secondary);
   border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  transition: width var(--duration-normal) var(--ease-out);
+  transition: width var(--duration-normal) var(--ease-spring);
 }
 
 .chat-sidebar.collapsed {
@@ -536,7 +801,7 @@ onMounted(() => {
 }
 
 .sidebar-header {
-  padding: var(--space-4);
+  padding: var(--space-5);
 }
 
 .new-chat-btn {
@@ -555,7 +820,7 @@ onMounted(() => {
 .sidebar-content {
   flex: 1;
   overflow-y: auto;
-  padding: 0 var(--space-2);
+  padding: 0 var(--space-3);
 }
 
 .loading-state {
@@ -580,14 +845,16 @@ onMounted(() => {
 .session-item {
   display: flex;
   align-items: center;
-  padding: var(--space-3);
-  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
   cursor: pointer;
-  transition: background var(--duration-fast);
+  transition: all var(--duration-fast) var(--ease-soft);
+  animation: slideIn var(--duration-slow) var(--ease-spring) backwards;
 }
 
 .session-item:hover {
   background: var(--bg-hover);
+  transform: translateX(4px);
 }
 
 .session-item.active {
@@ -624,10 +891,6 @@ onMounted(() => {
   opacity: 1;
 }
 
-.delete-btn:hover {
-  color: var(--color-danger);
-}
-
 /* 主内容区 */
 .chat-main {
   flex: 1;
@@ -637,32 +900,33 @@ onMounted(() => {
 }
 
 .chat-header {
-  height: 56px;
-  padding: 0 var(--space-4);
+  height: var(--header-height);
+  padding: 0 var(--space-8);
   display: flex;
   align-items: center;
   border-bottom: 1px solid var(--border-subtle);
-  background: var(--bg-secondary);
+  background: rgba(250, 248, 245, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .header-title {
-  font-size: var(--text-lg);
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
   font-weight: var(--font-semibold);
   color: var(--text-primary);
   margin: 0;
-}
-
-.header-spacer {
-  width: 32px;
+  letter-spacing: -0.01em;
 }
 
 /* 消息区域 */
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-6);
+  padding: var(--space-8);
 }
 
+/* 欢迎屏幕 */
 .welcome-screen {
   display: flex;
   flex-direction: column;
@@ -673,58 +937,95 @@ onMounted(() => {
   padding: var(--space-8);
 }
 
-.welcome-icon {
-  width: 64px;
-  height: 64px;
-  background: var(--color-primary-light);
-  border-radius: var(--radius-xl);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: var(--space-5);
-}
-
-.welcome-icon svg {
-  width: 32px;
-  height: 32px;
-  fill: var(--color-primary);
-}
-
 .welcome-title {
-  font-size: var(--text-2xl);
+  font-family: var(--font-display);
+  font-size: var(--text-4xl);
   font-weight: var(--font-semibold);
   color: var(--text-primary);
-  margin: 0 0 var(--space-2);
+  margin: 0 0 var(--space-3);
+  letter-spacing: -0.02em;
 }
 
 .welcome-desc {
   font-size: var(--text-base);
   color: var(--text-secondary);
-  margin: 0 0 var(--space-8);
+  margin: 0 0 var(--space-10);
 }
 
 .welcome-tips {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
+  flex-direction: row;
+  gap: var(--space-4);
+  max-width: 800px;
 }
 
 .tip-item {
   display: flex;
+  flex-direction: column;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  background: var(--bg-secondary);
-  border-radius: var(--radius-lg);
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
+  padding: var(--space-5);
+  background: var(--bg-elevated);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border-subtle);
+  text-align: center;
+  flex: 1;
+  transition: all var(--duration-normal) var(--ease-soft);
 }
 
-.tip-item svg {
-  width: 20px;
-  height: 20px;
-  fill: var(--color-primary);
+.tip-item:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+}
+
+.tip-icon {
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-primary-light);
+  border-radius: var(--radius-xl);
   flex-shrink: 0;
+}
+
+.tip-icon svg {
+  width: 26px;
+  height: 26px;
+  fill: var(--color-primary);
+}
+
+.tip-icon-accent {
+  background: var(--color-accent-light);
+}
+
+.tip-icon-accent svg {
+  fill: var(--color-accent);
+}
+
+.tip-icon-warm {
+  background: var(--color-warning-light);
+}
+
+.tip-icon-warm svg {
+  fill: var(--color-warning);
+}
+
+.tip-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.tip-title {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+}
+
+.tip-desc {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
 }
 
 .messages-container {
@@ -735,14 +1036,19 @@ onMounted(() => {
 
 .message {
   display: flex;
-  gap: var(--space-3);
+  gap: var(--space-4);
   margin-bottom: var(--space-6);
+  animation: slideUp var(--duration-normal) var(--ease-spring);
+}
+
+.message.user {
+  justify-content: flex-end;
 }
 
 .message-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-md);
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -751,13 +1057,13 @@ onMounted(() => {
   font-weight: var(--font-semibold);
 }
 
-.message.user .message-avatar {
-  background: var(--color-primary);
-  color: white;
+.user .message-avatar {
+  display: none;
 }
 
 .message.assistant .message-avatar {
   background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
 }
 
 .message.assistant .message-avatar svg {
@@ -767,25 +1073,46 @@ onMounted(() => {
 }
 
 .message-content {
-  flex: 1;
-  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.message.user .message-content {
+  align-items: flex-end;
+}
+
+.message-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.message.user .message-wrapper {
+  align-items: flex-end;
 }
 
 .message-text {
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-xl);
   font-size: var(--text-sm);
-  line-height: 1.6;
+  line-height: 1.7;
+  max-width: 600px;
 }
 
 .message.user .message-text {
-  background: var(--color-primary);
+  background: var(--gradient-accent);
   color: white;
+  border-bottom-right-radius: var(--radius-lg);
+  box-shadow: 0 2px 8px rgba(196, 125, 94, 0.2);
 }
 
 .message.assistant .message-text {
-  background: var(--bg-secondary);
+  background: var(--bg-elevated);
   color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  border-bottom-left-radius: var(--radius-lg);
 }
 
 .message-sources {
@@ -794,6 +1121,7 @@ onMounted(() => {
   flex-wrap: wrap;
   gap: var(--space-2);
   align-items: center;
+  padding: 0 var(--space-1);
 }
 
 .sources-label {
@@ -803,23 +1131,68 @@ onMounted(() => {
 
 .source-tag {
   font-size: var(--text-xs);
-  padding: var(--space-1) var(--space-2);
+  padding: var(--space-1) var(--space-3);
   background: var(--bg-tertiary);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-full);
   color: var(--text-secondary);
+}
+
+/* 消息操作按钮 */
+.message.assistant .message-actions {
+  display: flex;
+  gap: var(--space-1);
+  opacity: 1;
+}
+
+.message.user .message-actions {
+  display: flex;
+  gap: var(--space-1);
+  opacity: 0;
+  transition: opacity var(--duration-fast);
+}
+
+.message.user:hover .message-actions {
+  opacity: 1;
+}
+
+.action-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--duration-fast);
+}
+
+.action-icon:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
+.action-icon svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
 }
 
 /* 打字指示器 */
 .typing-indicator {
   display: inline-flex;
-  gap: 4px;
-  padding: var(--space-1);
+  gap: 5px;
+  padding: var(--space-2);
 }
 
 .typing-indicator span {
-  width: 6px;
-  height: 6px;
-  background: var(--text-muted);
+  width: 8px;
+  height: 8px;
+  background: var(--color-primary);
   border-radius: 50%;
   animation: bounce 1.4s infinite ease-in-out both;
 }
@@ -828,13 +1201,14 @@ onMounted(() => {
 .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
 
 @keyframes bounce {
-  0%, 80%, 100% { transform: scale(0); }
-  40% { transform: scale(1); }
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
 }
 
 /* 输入区域 */
 .chat-input-area {
-  padding: var(--space-4) var(--space-6) var(--space-6);
+  padding: var(--space-5) var(--space-8) var(--space-8);
+  background: linear-gradient(to top, var(--bg-primary) 70%, transparent);
 }
 
 .input-wrapper {
@@ -842,118 +1216,222 @@ onMounted(() => {
   margin: 0 auto;
 }
 
-.kb-selector {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-bottom: var(--space-3);
-}
-
-.kb-tag {
-  padding: var(--space-1) var(--space-3);
-  font-size: var(--text-xs);
-  font-weight: var(--font-medium);
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-full);
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all var(--duration-fast);
-}
-
-.kb-tag:hover {
-  border-color: var(--border-strong);
-  color: var(--text-primary);
-}
-
-.kb-tag.active {
-  background: var(--color-primary-light);
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-}
-
 .input-box {
   display: flex;
-  align-items: flex-end;
-  gap: var(--space-2);
-  background: var(--bg-secondary);
+  flex-direction: column;
+  background: var(--bg-elevated);
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-xl);
-  padding: var(--space-2) var(--space-3);
-  transition: border-color var(--duration-fast);
+  border-radius: var(--radius-2xl);
+  padding: var(--space-3) var(--space-4);
+  transition: all var(--duration-normal) var(--ease-soft);
+  box-shadow: var(--shadow-sm);
 }
 
 .input-box:focus-within {
   border-color: var(--color-primary);
+  box-shadow: var(--shadow-md), 0 0 0 3px var(--color-primary-light);
 }
 
 .input-box .textarea {
   flex: 1;
   background: transparent;
   border: none;
-  padding: var(--space-1);
+  padding: var(--space-2);
   resize: none;
+  font-size: var(--text-base);
+  min-height: 24px;
 }
 
 .input-box .textarea:focus {
   box-shadow: none;
 }
 
-.input-actions {
+/* 底部工具栏 */
+.input-toolbar {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  justify-content: space-between;
+  padding-top: var(--space-2);
+  margin-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
 }
 
-.action-btn {
-  width: 32px;
-  height: 32px;
+.toolbar-left {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: var(--space-2);
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+}
+
+.toolbar-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   background: transparent;
-  border: none;
-  border-radius: var(--radius-md);
-  color: var(--text-muted);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
   cursor: pointer;
-  transition: all var(--duration-fast);
+  transition: all var(--duration-fast) var(--ease-soft);
 }
 
-.action-btn:hover {
+.toolbar-btn:hover {
   background: var(--bg-hover);
+  border-color: var(--border-strong);
   color: var(--text-primary);
 }
 
-.action-btn.active {
-  color: var(--color-primary);
+.toolbar-btn.active {
+  background: var(--color-primary-light);
+  border-color: var(--color-primary);
+  color: var(--color-primary-dark);
 }
 
-.action-btn svg {
+.toolbar-btn svg {
   width: 18px;
   height: 18px;
   fill: currentColor;
 }
 
-.send-btn {
-  width: 32px;
-  height: 32px;
+.dropdown-arrow {
+  width: 16px !important;
+  height: 16px !important;
+  transition: transform var(--duration-fast) var(--ease-soft);
+}
+
+.dropdown-arrow.open {
+  transform: rotate(180deg);
+}
+
+/* 知识库下拉菜单 */
+.kb-dropdown {
+  position: relative;
+}
+
+.kb-dropdown-menu {
+  position: absolute;
+  bottom: calc(100% + var(--space-2));
+  left: 0;
+  min-width: 200px;
+  max-width: 280px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: slideUp var(--duration-normal) var(--ease-spring);
+  z-index: var(--z-dropdown);
+}
+
+.dropdown-header {
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.dropdown-empty {
+  padding: var(--space-4);
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.dropdown-list {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  transition: background var(--duration-fast);
+}
+
+.dropdown-item:hover {
+  background: var(--bg-hover);
+}
+
+.dropdown-item.selected {
+  background: var(--color-primary-light);
+}
+
+.dropdown-item input[type="checkbox"] {
+  display: none;
+}
+
+.item-check {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border-default);
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: all var(--duration-fast);
+  flex-shrink: 0;
+}
+
+.dropdown-item.selected .item-check {
   background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.dropdown-item.selected .item-check::after {
+  content: '';
+  width: 6px;
+  height: 10px;
+  border: 2px solid white;
+  border-top: none;
+  border-left: none;
+  transform: rotate(45deg) translateY(-1px);
+}
+
+.item-name {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.send-btn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--gradient-accent);
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   color: white;
   cursor: pointer;
-  transition: all var(--duration-fast);
+  transition: all var(--duration-normal) var(--ease-soft);
+  box-shadow: 0 2px 8px rgba(196, 125, 94, 0.25);
 }
 
 .send-btn:hover:not(:disabled) {
-  background: var(--color-primary-hover);
+  transform: scale(1.05);
+  box-shadow: 0 4px 16px rgba(196, 125, 94, 0.35);
+}
+
+.send-btn:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
 .send-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
@@ -970,12 +1448,12 @@ onMounted(() => {
 
 @media (max-width: 768px) {
   .nav-rail {
-    width: 48px;
+    width: 56px;
   }
 
   .nav-rail-btn {
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
   }
 
   .nav-rail-btn svg {
@@ -985,12 +1463,12 @@ onMounted(() => {
 
   .chat-sidebar {
     position: fixed;
-    left: 48px;
+    left: 56px;
     top: 0;
     bottom: 0;
     z-index: var(--z-modal);
     transform: translateX(-100%);
-    transition: transform var(--duration-normal) var(--ease-out);
+    transition: transform var(--duration-normal) var(--ease-spring);
     width: 280px;
     border-right: 1px solid var(--border-subtle);
   }
@@ -1009,17 +1487,98 @@ onMounted(() => {
     display: block;
     position: fixed;
     inset: 0;
-    left: 48px;
-    background: rgba(0, 0, 0, 0.5);
+    left: 56px;
+    background: rgba(61, 54, 50, 0.3);
+    backdrop-filter: blur(4px);
     z-index: calc(var(--z-modal) - 1);
   }
 
   .chat-messages {
-    padding: var(--space-4);
+    padding: var(--space-5);
   }
 
   .chat-input-area {
-    padding: var(--space-3) var(--space-4) var(--space-4);
+    padding: var(--space-4) var(--space-5) var(--space-5);
   }
+
+  .welcome-title {
+    font-size: var(--text-3xl);
+  }
+
+  .welcome-tips {
+    flex-direction: column;
+    max-width: 280px;
+  }
+
+  .tip-item {
+    flex-direction: row;
+    text-align: left;
+    padding: var(--space-4);
+  }
+
+  .tip-icon {
+    width: 44px;
+    height: 44px;
+  }
+
+  .tip-icon svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .toolbar-btn span {
+    display: none;
+  }
+
+  .kb-dropdown-menu {
+    left: auto;
+    right: 0;
+    min-width: 180px;
+  }
+
+  .message-actions {
+    opacity: 1;
+  }
+
+  .message-text {
+    max-width: calc(100vw - 140px);
+  }
+}
+
+/* 复制成功提示 */
+.copy-toast {
+  position: fixed;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  background: var(--text-primary);
+  color: var(--bg-primary);
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  box-shadow: var(--shadow-lg);
+  z-index: var(--z-toast);
+}
+
+.copy-toast svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+/* Toast 动画 */
+.toast-enter-active,
+.toast-leave-active {
+  transition: all var(--duration-normal) var(--ease-spring);
+}
+
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(20px);
 }
 </style>

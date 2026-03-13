@@ -46,9 +46,10 @@
 
         <div v-else class="kb-list">
           <div
-            v-for="kb in knowledgeBases"
+            v-for="(kb, index) in knowledgeBases"
             :key="kb.id"
             :class="['kb-item', { active: selectedKbId === kb.id }]"
+            :style="{ animationDelay: `${index * 40}ms` }"
             @click="selectKb(kb)"
           >
             <div class="kb-info">
@@ -78,9 +79,9 @@
       <!-- 右侧详情面板 -->
       <main class="kb-main">
         <div v-if="!selectedKbId" class="empty-main">
-          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9H9V9h10v2zm-4 4H9v-2h6v2zm4-8H9V5h10v2z"/>
-          </svg>
+          <div class="empty-visual">
+            <div class="empty-shape"></div>
+          </div>
           <p>选择一个知识库查看详情</p>
         </div>
 
@@ -108,11 +109,13 @@
                 hidden
                 @change="handleFileSelect"
               />
-              <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
-              </svg>
-              <p>拖拽文件到这里或点击上传</p>
-              <span>支持 .txt, .md, .pdf, .docx</span>
+              <div class="upload-icon">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
+                </svg>
+              </div>
+              <p class="upload-text">拖拽文件到这里或点击上传</p>
+              <span class="upload-hint">支持 .txt, .md, .pdf, .docx</span>
             </div>
 
             <div v-if="uploadProgress !== null" class="upload-progress">
@@ -140,7 +143,7 @@
             </div>
 
             <div v-else class="doc-list">
-              <div v-for="doc in documents" :key="doc.id" class="doc-item">
+              <div v-for="(doc, index) in documents" :key="doc.id" class="doc-item" :style="{ animationDelay: `${index * 50}ms` }">
                 <div class="doc-icon">
                   <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm4 18H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
@@ -447,47 +450,68 @@ onMounted(() => {
 
 /* 左侧固定导航栏 */
 .nav-rail {
-  width: 56px;
+  width: var(--nav-rail-width);
   background: var(--bg-secondary);
   border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: var(--space-3) 0;
+  padding: var(--space-4) 0;
   gap: var(--space-2);
   flex-shrink: 0;
 }
 
 .nav-rail-btn {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: transparent;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all var(--duration-fast);
+  transition: all var(--duration-normal) var(--ease-soft);
   text-decoration: none;
   position: relative;
 }
 
+.nav-rail-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--color-primary-light);
+  opacity: 0;
+  transform: scale(0.8);
+  transition: all var(--duration-normal) var(--ease-spring);
+}
+
 .nav-rail-btn:hover {
-  background: var(--bg-hover);
   color: var(--text-primary);
+}
+
+.nav-rail-btn:hover::before {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .nav-rail-btn.router-link-active {
   color: var(--color-primary);
-  background: var(--color-primary-light);
+}
+
+.nav-rail-btn.router-link-active::before {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .nav-rail-btn svg {
   width: 22px;
   height: 22px;
   fill: currentColor;
+  position: relative;
+  z-index: 1;
 }
 
 /* 主内容区包装 */
@@ -503,18 +527,22 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: var(--space-4);
-  padding: 0 var(--space-6);
-  height: 56px;
-  background: var(--bg-secondary);
+  padding: 0 var(--space-8);
+  height: var(--header-height);
+  background: rgba(250, 248, 245, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border-subtle);
 }
 
 .header-title {
   flex: 1;
-  font-size: var(--text-lg);
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
   font-weight: var(--font-semibold);
   color: var(--text-primary);
   margin: 0;
+  letter-spacing: -0.01em;
 }
 
 .kb-header .btn svg {
@@ -532,7 +560,7 @@ onMounted(() => {
 
 /* 侧边栏 */
 .kb-sidebar {
-  width: 280px;
+  width: 300px;
   background: var(--bg-secondary);
   border-right: 1px solid var(--border-subtle);
   display: flex;
@@ -543,7 +571,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-4);
+  padding: var(--space-5);
   font-size: var(--text-sm);
   font-weight: var(--font-medium);
   color: var(--text-secondary);
@@ -551,28 +579,32 @@ onMounted(() => {
 
 .count {
   background: var(--bg-hover);
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full);
   font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
 }
 
 .kb-list {
   flex: 1;
   overflow-y: auto;
-  padding: 0 var(--space-2);
+  padding: 0 var(--space-3);
 }
 
 .kb-item {
   display: flex;
   align-items: center;
-  padding: var(--space-3);
-  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
   cursor: pointer;
-  transition: background var(--duration-fast);
+  transition: all var(--duration-fast) var(--ease-soft);
+  animation: slideIn var(--duration-slow) var(--ease-spring) backwards;
 }
 
 .kb-item:hover {
   background: var(--bg-hover);
+  transform: translateX(4px);
 }
 
 .kb-item.active {
@@ -615,13 +647,9 @@ onMounted(() => {
   opacity: 1;
 }
 
-.delete-btn:hover {
-  color: var(--color-danger);
-}
-
 .empty-list {
   text-align: center;
-  padding: var(--space-8);
+  padding: var(--space-10);
   color: var(--text-muted);
   font-size: var(--text-sm);
 }
@@ -630,7 +658,7 @@ onMounted(() => {
 .kb-main {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-6);
+  padding: var(--space-8);
 }
 
 .empty-main {
@@ -642,12 +670,20 @@ onMounted(() => {
   color: var(--text-muted);
 }
 
-.empty-main svg {
-  width: 48px;
-  height: 48px;
-  fill: currentColor;
+.empty-visual {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  margin-bottom: var(--space-5);
+}
+
+.empty-shape {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-2xl);
+  transform: rotate(45deg);
   opacity: 0.5;
-  margin-bottom: var(--space-3);
 }
 
 .empty-main p {
@@ -659,25 +695,27 @@ onMounted(() => {
 }
 
 .detail-header {
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-8);
 }
 
 .detail-title {
-  font-size: var(--text-xl);
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
   font-weight: var(--font-semibold);
   color: var(--text-primary);
-  margin: 0 0 var(--space-1);
+  margin: 0 0 var(--space-2);
+  letter-spacing: -0.02em;
 }
 
 .detail-desc {
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   color: var(--text-secondary);
   margin: 0;
 }
 
 /* 上传区域 */
 .upload-area {
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-8);
 }
 
 .upload-zone {
@@ -685,48 +723,67 @@ onMounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: var(--space-8);
+  padding: var(--space-10);
   border: 2px dashed var(--border-default);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-2xl);
   cursor: pointer;
-  transition: all var(--duration-fast);
+  transition: all var(--duration-normal) var(--ease-soft);
+  background: var(--bg-elevated);
 }
 
 .upload-zone:hover,
 .upload-zone.dragover {
   border-color: var(--color-primary);
   background: var(--color-primary-light);
+  transform: scale(1.01);
 }
 
-.upload-zone svg {
-  width: 40px;
-  height: 40px;
-  fill: var(--text-muted);
-  margin-bottom: var(--space-3);
+.upload-icon {
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-primary-light);
+  border-radius: var(--radius-xl);
+  margin-bottom: var(--space-4);
+  transition: all var(--duration-normal) var(--ease-soft);
 }
 
-.upload-zone p {
-  font-size: var(--text-sm);
+.upload-zone:hover .upload-icon,
+.upload-zone.dragover .upload-icon {
+  transform: translateY(-4px);
+}
+
+.upload-icon svg {
+  width: 32px;
+  height: 32px;
+  fill: var(--color-primary);
+}
+
+.upload-text {
+  font-size: var(--text-base);
+  font-weight: var(--font-medium);
   color: var(--text-primary);
   margin: 0;
 }
 
-.upload-zone span {
+.upload-hint {
   font-size: var(--text-xs);
   color: var(--text-muted);
-  margin-top: var(--space-1);
+  margin-top: var(--space-2);
 }
 
 .upload-progress {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  margin-top: var(--space-3);
+  gap: var(--space-4);
+  margin-top: var(--space-4);
 }
 
 .progress-bar {
   flex: 1;
-  height: 4px;
+  height: 6px;
   background: var(--bg-tertiary);
   border-radius: var(--radius-full);
   overflow: hidden;
@@ -734,32 +791,36 @@ onMounted(() => {
 
 .progress-fill {
   height: 100%;
-  background: var(--color-primary);
-  transition: width var(--duration-fast);
+  background: var(--gradient-accent);
+  border-radius: var(--radius-full);
+  transition: width var(--duration-fast) var(--ease-soft);
 }
 
 .upload-progress span {
   font-size: var(--text-xs);
-  color: var(--text-muted);
+  font-weight: var(--font-medium);
+  color: var(--text-secondary);
 }
 
 /* 文档列表 */
 .docs-section {
-  background: var(--bg-secondary);
-  border-radius: var(--radius-lg);
-  padding: var(--space-4);
+  background: var(--bg-elevated);
+  border-radius: var(--radius-2xl);
+  padding: var(--space-5);
+  border: 1px solid var(--border-subtle);
 }
 
 .section-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: var(--space-3);
+  margin-bottom: var(--space-4);
 }
 
 .section-header h3 {
-  font-size: var(--text-sm);
-  font-weight: var(--font-medium);
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
   color: var(--text-primary);
   margin: 0;
 }
@@ -771,11 +832,12 @@ onMounted(() => {
 
 .empty-docs {
   text-align: center;
-  padding: var(--space-8);
+  padding: var(--space-10);
 }
 
 .empty-docs p {
   font-size: var(--text-sm);
+  font-weight: var(--font-medium);
   color: var(--text-secondary);
   margin: 0;
 }
@@ -794,25 +856,33 @@ onMounted(() => {
 .doc-item {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  background: var(--bg-tertiary);
-  border-radius: var(--radius-md);
+  gap: var(--space-4);
+  padding: var(--space-4);
+  background: var(--bg-primary);
+  border-radius: var(--radius-lg);
+  transition: all var(--duration-fast) var(--ease-soft);
+  animation: slideUp var(--duration-normal) var(--ease-spring) backwards;
+}
+
+.doc-item:hover {
+  background: var(--bg-hover);
+  transform: translateX(4px);
 }
 
 .doc-icon {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: var(--color-primary-light);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
+  flex-shrink: 0;
 }
 
 .doc-icon svg {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   fill: var(--color-primary);
 }
 
@@ -824,6 +894,7 @@ onMounted(() => {
 .doc-name {
   display: block;
   font-size: var(--text-sm);
+  font-weight: var(--font-medium);
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -853,7 +924,7 @@ onMounted(() => {
 /* 响应式 */
 @media (max-width: 768px) {
   .kb-header {
-    padding: 0 var(--space-4);
+    padding: 0 var(--space-5);
   }
 
   .kb-content {
@@ -862,13 +933,17 @@ onMounted(() => {
 
   .kb-sidebar {
     width: 100%;
-    max-height: 200px;
+    max-height: 220px;
     border-right: none;
     border-bottom: 1px solid var(--border-subtle);
   }
 
   .kb-main {
-    padding: var(--space-4);
+    padding: var(--space-5);
+  }
+
+  .detail-title {
+    font-size: var(--text-2xl);
   }
 }
 </style>

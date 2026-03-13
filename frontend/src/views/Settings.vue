@@ -28,7 +28,7 @@
 
     <div class="settings-content">
       <!-- 大模型设置 -->
-      <div class="settings-card">
+      <div class="settings-card animate-slide-up stagger-1">
         <div class="card-header">
           <div class="card-icon llm-icon">
             <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -78,7 +78,7 @@
       </div>
 
       <!-- Embedding 模型设置 -->
-      <div class="settings-card">
+      <div class="settings-card animate-slide-up stagger-2">
         <div class="card-header">
           <div class="card-icon embedding-icon">
             <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -128,7 +128,7 @@
       </div>
 
       <!-- Rerank 模型设置 -->
-      <div class="settings-card">
+      <div class="settings-card animate-slide-up stagger-3">
         <div class="card-header">
           <div class="card-icon rerank-icon">
             <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -178,7 +178,7 @@
       </div>
 
       <!-- 保存按钮 -->
-      <div class="settings-actions">
+      <div class="settings-actions animate-slide-up stagger-4">
         <button class="btn btn-secondary" @click="loadSettings">
           重置
         </button>
@@ -256,47 +256,68 @@ onMounted(() => {
 
 /* 左侧固定导航栏 */
 .nav-rail {
-  width: 56px;
+  width: var(--nav-rail-width);
   background: var(--bg-secondary);
   border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: var(--space-3) 0;
+  padding: var(--space-4) 0;
   gap: var(--space-2);
   flex-shrink: 0;
 }
 
 .nav-rail-btn {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: transparent;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all var(--duration-fast);
+  transition: all var(--duration-normal) var(--ease-soft);
   text-decoration: none;
   position: relative;
 }
 
+.nav-rail-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--color-primary-light);
+  opacity: 0;
+  transform: scale(0.8);
+  transition: all var(--duration-normal) var(--ease-spring);
+}
+
 .nav-rail-btn:hover {
-  background: var(--bg-hover);
   color: var(--text-primary);
+}
+
+.nav-rail-btn:hover::before {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .nav-rail-btn.router-link-active {
   color: var(--color-primary);
-  background: var(--color-primary-light);
+}
+
+.nav-rail-btn.router-link-active::before {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .nav-rail-btn svg {
   width: 22px;
   height: 22px;
   fill: currentColor;
+  position: relative;
+  z-index: 1;
 }
 
 /* 主内容区包装 */
@@ -312,25 +333,29 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: var(--space-4);
-  padding: 0 var(--space-6);
-  height: 56px;
-  background: var(--bg-secondary);
+  padding: 0 var(--space-8);
+  height: var(--header-height);
+  background: rgba(250, 248, 245, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border-subtle);
 }
 
 .header-title {
   flex: 1;
-  font-size: var(--text-lg);
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
   font-weight: var(--font-semibold);
   color: var(--text-primary);
   margin: 0;
+  letter-spacing: -0.01em;
 }
 
 /* 内容区域 */
 .settings-content {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-6);
+  padding: var(--space-8);
   max-width: 800px;
   margin: 0 auto;
   width: 100%;
@@ -338,51 +363,62 @@ onMounted(() => {
 
 /* 设置卡片 */
 .settings-card {
-  background: var(--bg-secondary);
+  background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-xl);
-  margin-bottom: var(--space-4);
+  border-radius: var(--radius-2xl);
+  margin-bottom: var(--space-5);
   overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  transition: all var(--duration-normal) var(--ease-soft);
+}
+
+.settings-card:hover {
+  box-shadow: var(--shadow-md);
 }
 
 .card-header {
   display: flex;
   align-items: center;
   gap: var(--space-4);
-  padding: var(--space-4);
-  background: var(--bg-tertiary);
+  padding: var(--space-5);
+  background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-subtle);
 }
 
 .card-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-lg);
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-xl);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  transition: transform var(--duration-normal) var(--ease-spring);
+}
+
+.settings-card:hover .card-icon {
+  transform: scale(1.05);
 }
 
 .card-icon svg {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   fill: currentColor;
 }
 
 .llm-icon {
-  background: rgba(99, 102, 241, 0.15);
-  color: #6366f1;
+  background: var(--color-primary-light);
+  color: var(--color-primary);
 }
 
 .embedding-icon {
-  background: rgba(16, 185, 129, 0.15);
-  color: #10b981;
+  background: var(--color-accent-light);
+  color: var(--color-accent);
 }
 
 .rerank-icon {
-  background: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
+  background: var(--color-warning-light);
+  color: var(--color-warning);
 }
 
 .card-title-group {
@@ -390,7 +426,8 @@ onMounted(() => {
 }
 
 .card-title {
-  font-size: var(--text-base);
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
   font-weight: var(--font-semibold);
   color: var(--text-primary);
   margin: 0;
@@ -403,11 +440,11 @@ onMounted(() => {
 }
 
 .card-body {
-  padding: var(--space-4);
+  padding: var(--space-5);
 }
 
 .form-row {
-  margin-bottom: var(--space-3);
+  margin-bottom: var(--space-4);
 }
 
 .form-row:last-child {
@@ -431,16 +468,24 @@ onMounted(() => {
   display: flex;
   justify-content: flex-end;
   gap: var(--space-3);
-  margin-top: var(--space-4);
+  margin-top: var(--space-6);
 }
 
 /* 响应式 */
 @media (max-width: 768px) {
   .settings-header {
-    padding: 0 var(--space-4);
+    padding: 0 var(--space-5);
   }
 
   .settings-content {
+    padding: var(--space-5);
+  }
+
+  .card-header {
+    padding: var(--space-4);
+  }
+
+  .card-body {
     padding: var(--space-4);
   }
 }

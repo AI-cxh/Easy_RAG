@@ -1,6 +1,6 @@
 /**
  * Easy RAG Layout Styles
- * 深色主题 - 现代简洁风格
+ * Soft/Organic Theme - Warm, approachable, nature-inspired
  */
 
 /* ========== 基础重置与全局样式 ========== */
@@ -22,15 +22,29 @@ body {
   font-family: var(--font-sans);
   background: var(--bg-primary);
   color: var(--text-primary);
-  line-height: 1.5;
+  line-height: 1.6;
   min-height: 100vh;
   overflow-x: hidden;
+  position: relative;
+}
+
+/* 背景纹理 - Subtle grain */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  opacity: 0.015;
+  pointer-events: none;
+  z-index: 0;
 }
 
 #app {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  position: relative;
+  z-index: 1;
 }
 
 /* ========== 聊天布局 ========== */
@@ -38,6 +52,7 @@ body {
   display: flex;
   height: 100vh;
   overflow: hidden;
+  background: var(--gradient-hero);
 }
 
 /* 侧边栏 */
@@ -51,18 +66,18 @@ body {
 }
 
 .sidebar-header {
-  padding: var(--space-4);
+  padding: var(--space-5);
   border-bottom: 1px solid var(--border-subtle);
 }
 
 .sidebar-content {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-2);
+  padding: var(--space-3);
 }
 
 .sidebar-footer {
-  padding: var(--space-3);
+  padding: var(--space-4);
   border-top: 1px solid var(--border-subtle);
 }
 
@@ -77,23 +92,25 @@ body {
 
 .chat-header {
   height: var(--header-height);
-  padding: 0 var(--space-6);
+  padding: 0 var(--space-8);
   display: flex;
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--border-subtle);
-  background: var(--bg-secondary);
+  background: rgba(250, 248, 245, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-6);
+  padding: var(--space-8);
 }
 
 .chat-input-area {
-  padding: var(--space-4) var(--space-6) var(--space-6);
-  background: var(--bg-primary);
+  padding: var(--space-5) var(--space-8) var(--space-8);
+  background: linear-gradient(to top, var(--bg-primary) 60%, transparent);
 }
 
 .chat-input-wrapper {
@@ -103,7 +120,7 @@ body {
 
 /* ========== 页面容器 ========== */
 .page-container {
-  padding: var(--space-6);
+  padding: var(--space-8);
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -113,32 +130,41 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-8);
 }
 
 .page-title {
-  font-size: var(--text-2xl);
+  font-family: var(--font-display);
+  font-size: var(--text-4xl);
   font-weight: var(--font-semibold);
   color: var(--text-primary);
+  letter-spacing: -0.02em;
 }
 
 /* ========== 卡片 ========== */
 .card {
   background: var(--bg-elevated);
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xl);
-  padding: var(--space-5);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--duration-normal) var(--ease-soft);
+}
+
+.card:hover {
+  box-shadow: var(--shadow-md);
 }
 
 .card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-5);
 }
 
 .card-title {
-  font-size: var(--text-lg);
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
   font-weight: var(--font-semibold);
   color: var(--text-primary);
 }
@@ -152,7 +178,7 @@ body {
     bottom: 0;
     z-index: var(--z-modal);
     transform: translateX(-100%);
-    transition: transform var(--duration-normal) var(--ease-out);
+    transition: transform var(--duration-normal) var(--ease-spring);
   }
 
   .chat-sidebar.open {
@@ -162,7 +188,8 @@ body {
   .sidebar-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(61, 54, 50, 0.3);
+    backdrop-filter: blur(4px);
     z-index: calc(var(--z-modal) - 1);
     opacity: 0;
     visibility: hidden;
@@ -175,19 +202,23 @@ body {
   }
 
   .chat-header {
-    padding: 0 var(--space-4);
+    padding: 0 var(--space-5);
   }
 
   .chat-messages {
-    padding: var(--space-4);
+    padding: var(--space-5);
   }
 
   .chat-input-area {
-    padding: var(--space-3) var(--space-4) var(--space-4);
+    padding: var(--space-4) var(--space-5) var(--space-5);
   }
 
   .page-container {
-    padding: var(--space-4);
+    padding: var(--space-5);
+  }
+
+  .page-title {
+    font-size: var(--text-3xl);
   }
 }
 
@@ -200,7 +231,7 @@ body {
 @keyframes slideUp {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(16px);
   }
   to {
     opacity: 1;
@@ -208,9 +239,30 @@ body {
   }
 }
 
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
 }
 
 .animate-fade-in {
@@ -218,5 +270,16 @@ body {
 }
 
 .animate-slide-up {
-  animation: slideUp var(--duration-normal) var(--ease-out);
+  animation: slideUp var(--duration-slow) var(--ease-spring);
 }
+
+.animate-slide-in {
+  animation: slideIn var(--duration-slow) var(--ease-spring);
+}
+
+/* Staggered animations */
+.stagger-1 { animation-delay: 50ms; }
+.stagger-2 { animation-delay: 100ms; }
+.stagger-3 { animation-delay: 150ms; }
+.stagger-4 { animation-delay: 200ms; }
+.stagger-5 { animation-delay: 250ms; }
