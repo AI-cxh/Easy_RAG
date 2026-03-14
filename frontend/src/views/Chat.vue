@@ -134,20 +134,39 @@
             <template v-if="msg.role === 'user'">
               <div class="message-content">
                 <div class="message-wrapper">
-                  <div class="message-text">{{ msg.content }}</div>
-                  <!-- 用户消息操作按钮 -->
-                  <div class="message-actions">
-                    <button class="action-icon" @click="editMessage(index)" title="编辑">
-                      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
-                      </svg>
-                    </button>
-                    <button class="action-icon" @click="copyMessage(msg.content)" title="复制">
-                      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
-                      </svg>
-                    </button>
-                  </div>
+                  <!-- 编辑模式 -->
+                  <template v-if="editingMessageIndex === index">
+                    <div class="message-edit-box">
+                      <textarea
+                        v-model="editingMessageContent"
+                        class="edit-textarea"
+                        placeholder="编辑消息..."
+                        @keydown.enter.ctrl="saveMessageEdit(index)"
+                        @keydown.escape="cancelMessageEdit"
+                      ></textarea>
+                      <div class="edit-actions">
+                        <button class="edit-btn cancel" @click="cancelMessageEdit">取消</button>
+                        <button class="edit-btn save" @click="saveMessageEdit(index)">保存并发送</button>
+                      </div>
+                    </div>
+                  </template>
+                  <!-- 正常显示模式 -->
+                  <template v-else>
+                    <div class="message-text">{{ msg.content }}</div>
+                    <!-- 用户消息操作按钮 -->
+                    <div class="message-actions">
+                      <button v-if="index === lastUserMessageIndex" class="action-icon" @click="startEditMessage(index)" title="编辑">
+                        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+                        </svg>
+                      </button>
+                      <button class="action-icon" @click="copyMessage(msg.content)" title="复制">
+                        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </template>
                 </div>
               </div>
             </template>
@@ -318,7 +337,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { chatAPI, knowledgeAPI } from '../api/client'
 import { marked } from 'marked'
 
@@ -357,6 +376,20 @@ const copySuccess = ref(false)
 const editingSessionId = ref<number>()
 const editingSessionName = ref('')
 const renameInputRef = ref<HTMLInputElement>()
+
+// 消息编辑状态
+const editingMessageIndex = ref<number>()
+const editingMessageContent = ref('')
+
+// 获取最新用户消息的索引
+const lastUserMessageIndex = computed(() => {
+  for (let i = messages.value.length - 1; i >= 0; i--) {
+    if (messages.value[i].role === 'user') {
+      return i
+    }
+  }
+  return -1
+})
 
 // Markdown 渲染
 const renderMarkdown = (content: string) => {
@@ -622,24 +655,93 @@ const showCopySuccess = () => {
   }, 1500)
 }
 
-// 编辑用户消息
-const editMessage = (index: number) => {
+// 开始编辑用户消息
+const startEditMessage = (index: number) => {
   const msg = messages.value[index]
   if (msg.role !== 'user') return
 
-  inputMessage.value = msg.content
-  autoResize()
+  editingMessageIndex.value = index
+  editingMessageContent.value = msg.content
   nextTick(() => {
-    inputRef.value?.focus()
+    const textarea = document.querySelector('.edit-textarea') as HTMLTextAreaElement
+    if (textarea) {
+      textarea.focus()
+      textarea.select()
+    }
   })
+}
 
-  // 删除该消息及之后的所有消息，准备重新对话
-  if (index < messages.value.length - 1) {
-    messages.value = messages.value.slice(0, index)
-  } else {
-    messages.value.pop()
+// 取消编辑消息
+const cancelMessageEdit = () => {
+  editingMessageIndex.value = undefined
+  editingMessageContent.value = ''
+}
+
+// 保存编辑的消息并重新发送
+const saveMessageEdit = async (index: number) => {
+  const newContent = editingMessageContent.value.trim()
+  if (!newContent) {
+    cancelMessageEdit()
+    return
   }
+
+  // 更新消息内容
+  messages.value[index].content = newContent
+  cancelMessageEdit()
+
+  // 删除该用户消息之后的助手回复（如果有的话）
+  if (index < messages.value.length - 1 && messages.value[index + 1].role === 'assistant') {
+    messages.value = messages.value.slice(0, index + 1)
+  }
+
   saveState()
+
+  // 重新发送消息获取回答
+  isSending.value = true
+
+  try {
+    const assistantIndex = messages.value.length
+    messages.value.push({
+      role: 'assistant',
+      content: '',
+      sources: undefined,
+      search_results: undefined
+    })
+    scrollToBottom()
+
+    const result = await chatAPI.sendMessageStream(
+      {
+        message: newContent,
+        session_id: currentSessionId.value,
+        kb_ids: selectedKbIds.value,
+        use_web_search: useWebSearch.value
+      },
+      (chunk) => {
+        if (chunk.type === 'chunk' && chunk.content) {
+          messages.value[assistantIndex].content += chunk.content
+          scrollToBottom()
+        } else if (chunk.type === 'error') {
+          console.error('Stream error:', chunk.message)
+          messages.value[assistantIndex].content = '抱歉，发生了错误，请稍后重试。'
+        }
+      }
+    )
+
+    currentSessionId.value = result.sessionId
+    messages.value[assistantIndex].sources = result.sources
+    messages.value[assistantIndex].search_results = result.searchResults
+    saveState()
+
+    await loadSessions()
+  } catch (error) {
+    console.error('Chat error:', error)
+    messages.value.push({
+      role: 'assistant',
+      content: '抱歉，发生了错误，请稍后重试。'
+    })
+  } finally {
+    isSending.value = false
+  }
 }
 
 // 再次生成回答
@@ -1180,6 +1282,67 @@ onMounted(() => {
   width: 14px;
   height: 14px;
   fill: currentColor;
+}
+
+/* 消息编辑框 */
+.message-edit-box {
+  width: 100%;
+}
+
+.edit-textarea {
+  width: 100%;
+  min-height: 80px;
+  padding: var(--space-3);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  resize: vertical;
+  transition: border-color var(--duration-fast);
+}
+
+.edit-textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.edit-btn {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--duration-fast);
+}
+
+.edit-btn.cancel {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+}
+
+.edit-btn.cancel:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.edit-btn.save {
+  background: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  color: white;
+}
+
+.edit-btn.save:hover {
+  opacity: 0.9;
 }
 
 /* 打字指示器 */

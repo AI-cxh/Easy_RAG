@@ -3,7 +3,8 @@
     "allow": [
       "Bash(curl -s http://localhost:8000/api/knowledge 2>/dev/null | head -100)",
       "Bash(curl -X POST \"http://localhost:8000/api/upload/2\" -F \"file=@E:/Easy_RAG/README.md\" 2>&1)",
-      "Bash(cd E:/Easy_RAG/frontend && npm run build 2>&1 | tail -15)"
+      "Bash(cd E:/Easy_RAG/frontend && npm run build 2>&1 | tail -15)",
+      "Bash(cd E:/Easy_RAG/frontend && npm run build 2>&1 | tail -10)"
     ]
   }
 }
