@@ -180,6 +180,8 @@
               </div>
               <div class="message-content">
                 <div class="message-wrapper">
+                  <!-- Agent思考过程 -->
+                  <AgentThinking v-if="msg.thinkingSteps && msg.thinkingSteps.length > 0" :steps="msg.thinkingSteps" />
                   <div class="message-text markdown" v-html="renderMarkdown(msg.content)"></div>
                   <span v-if="!msg.content && isSending && index === messages.length - 1" class="typing-indicator">
                     <span></span><span></span><span></span>
@@ -226,6 +228,18 @@
             <!-- 底部工具栏 -->
             <div class="input-toolbar">
               <div class="toolbar-left">
+                <!-- Agent模式切换 -->
+                <button
+                  class="toolbar-btn agent-mode-btn"
+                  :class="{ active: useAgentMode }"
+                  @click="useAgentMode = !useAgentMode"
+                  title="Agent模式"
+                >
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                  </svg>
+                  <span>{{ useAgentMode ? 'Agent' : 'RAG' }}</span>
+                </button>
                 <!-- 知识库选择 -->
                 <div class="kb-dropdown">
                   <button
@@ -338,8 +352,10 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue'
-import { chatAPI, knowledgeAPI } from '../api/client'
+import { chatAPI, knowledgeAPI, agentAPI } from '../api/client'
+import type { ThinkingStep } from '../api/client'
 import { marked } from 'marked'
+import AgentThinking from '../components/AgentThinking.vue'
 
 // 类型定义
 interface Message {
@@ -347,6 +363,7 @@ interface Message {
   content: string
   sources?: string[]
   search_results?: Array<{ title: string; url: string; snippet?: string }>
+  thinkingSteps?: ThinkingStep[]
 }
 
 interface ChatSession {
@@ -369,6 +386,7 @@ const inputRef = ref<HTMLTextAreaElement>()
 
 const selectedKbIds = ref<number[]>([])
 const useWebSearch = ref(false)
+const useAgentMode = ref(true)  // 默认使用Agent模式
 const knowledgeBases = ref<any[]>([])
 const inputMessage = ref('')
 const showKbDropdown = ref(false)
@@ -590,33 +608,93 @@ const handleSend = async () => {
       role: 'assistant',
       content: '',
       sources: undefined,
-      search_results: undefined
+      search_results: undefined,
+      thinkingSteps: undefined
     })
     scrollToBottom()
 
-    const result = await chatAPI.sendMessageStream(
-      {
-        message,
-        session_id: currentSessionId.value,
-        kb_ids: selectedKbIds.value,
-        use_web_search: useWebSearch.value
-      },
-      (chunk) => {
-        if (chunk.type === 'chunk' && chunk.content) {
-          messages.value[assistantIndex].content += chunk.content
-          scrollToBottom()
-        } else if (chunk.type === 'error') {
-          console.error('Stream error:', chunk.message)
-          messages.value[assistantIndex].content = '抱歉，发生了错误，请稍后重试。'
+    if (useAgentMode.value) {
+      // Agent模式
+      const result = await agentAPI.sendMessageStream(
+        {
+          message,
+          session_id: currentSessionId.value,
+          kb_ids: selectedKbIds.value.length > 0 ? selectedKbIds.value : undefined,
+          use_web_search: useWebSearch.value,
+          show_thinking: true
+        },
+        (chunk) => {
+          if (chunk.type === 'chunk' && chunk.content) {
+            messages.value[assistantIndex].content += chunk.content
+            scrollToBottom()
+          } else if (chunk.type === 'thought') {
+            // 思考过程
+            if (!messages.value[assistantIndex].thinkingSteps) {
+              messages.value[assistantIndex].thinkingSteps = []
+            }
+            messages.value[assistantIndex].thinkingSteps!.push({
+              type: 'thought',
+              content: chunk.content || ''
+            })
+            scrollToBottom()
+          } else if (chunk.type === 'tool_call') {
+            // 工具调用
+            if (!messages.value[assistantIndex].thinkingSteps) {
+              messages.value[assistantIndex].thinkingSteps = []
+            }
+            messages.value[assistantIndex].thinkingSteps!.push({
+              type: 'tool_call',
+              content: chunk.content || '',
+              tool_name: chunk.tool_name,
+              tool_args: chunk.tool_args
+            })
+            scrollToBottom()
+          } else if (chunk.type === 'tool_result') {
+            // 工具结果
+            if (!messages.value[assistantIndex].thinkingSteps) {
+              messages.value[assistantIndex].thinkingSteps = []
+            }
+            messages.value[assistantIndex].thinkingSteps!.push({
+              type: 'tool_result',
+              content: chunk.content || '',
+              tool_name: chunk.tool_name
+            })
+            scrollToBottom()
+          } else if (chunk.type === 'error') {
+            console.error('Stream error:', chunk.message)
+            messages.value[assistantIndex].content = '抱歉，发生了错误，请稍后重试。'
+          }
         }
-      }
-    )
+      )
 
-    currentSessionId.value = result.sessionId
-    messages.value[assistantIndex].sources = result.sources
-    messages.value[assistantIndex].search_results = result.searchResults
+      currentSessionId.value = result.sessionId
+      messages.value[assistantIndex].thinkingSteps = result.thinkingSteps
+    } else {
+      // 传统RAG模式
+      const result = await chatAPI.sendMessageStream(
+        {
+          message,
+          session_id: currentSessionId.value,
+          kb_ids: selectedKbIds.value,
+          use_web_search: useWebSearch.value
+        },
+        (chunk) => {
+          if (chunk.type === 'chunk' && chunk.content) {
+            messages.value[assistantIndex].content += chunk.content
+            scrollToBottom()
+          } else if (chunk.type === 'error') {
+            console.error('Stream error:', chunk.message)
+            messages.value[assistantIndex].content = '抱歉，发生了错误，请稍后重试。'
+          }
+        }
+      )
+
+      currentSessionId.value = result.sessionId
+      messages.value[assistantIndex].sources = result.sources
+      messages.value[assistantIndex].search_results = result.searchResults
+    }
+
     saveState()
-
     await loadSessions()
   } catch (error) {
     console.error('Chat error:', error)
@@ -705,33 +783,90 @@ const saveMessageEdit = async (index: number) => {
       role: 'assistant',
       content: '',
       sources: undefined,
-      search_results: undefined
+      search_results: undefined,
+      thinkingSteps: undefined
     })
     scrollToBottom()
 
-    const result = await chatAPI.sendMessageStream(
-      {
-        message: newContent,
-        session_id: currentSessionId.value,
-        kb_ids: selectedKbIds.value,
-        use_web_search: useWebSearch.value
-      },
-      (chunk) => {
-        if (chunk.type === 'chunk' && chunk.content) {
-          messages.value[assistantIndex].content += chunk.content
-          scrollToBottom()
-        } else if (chunk.type === 'error') {
-          console.error('Stream error:', chunk.message)
-          messages.value[assistantIndex].content = '抱歉，发生了错误，请稍后重试。'
+    if (useAgentMode.value) {
+      // Agent模式
+      const result = await agentAPI.sendMessageStream(
+        {
+          message: newContent,
+          session_id: currentSessionId.value,
+          kb_ids: selectedKbIds.value.length > 0 ? selectedKbIds.value : undefined,
+          use_web_search: useWebSearch.value,
+          show_thinking: true
+        },
+        (chunk) => {
+          if (chunk.type === 'chunk' && chunk.content) {
+            messages.value[assistantIndex].content += chunk.content
+            scrollToBottom()
+          } else if (chunk.type === 'thought') {
+            if (!messages.value[assistantIndex].thinkingSteps) {
+              messages.value[assistantIndex].thinkingSteps = []
+            }
+            messages.value[assistantIndex].thinkingSteps!.push({
+              type: 'thought',
+              content: chunk.content || ''
+            })
+            scrollToBottom()
+          } else if (chunk.type === 'tool_call') {
+            if (!messages.value[assistantIndex].thinkingSteps) {
+              messages.value[assistantIndex].thinkingSteps = []
+            }
+            messages.value[assistantIndex].thinkingSteps!.push({
+              type: 'tool_call',
+              content: chunk.content || '',
+              tool_name: chunk.tool_name,
+              tool_args: chunk.tool_args
+            })
+            scrollToBottom()
+          } else if (chunk.type === 'tool_result') {
+            if (!messages.value[assistantIndex].thinkingSteps) {
+              messages.value[assistantIndex].thinkingSteps = []
+            }
+            messages.value[assistantIndex].thinkingSteps!.push({
+              type: 'tool_result',
+              content: chunk.content || '',
+              tool_name: chunk.tool_name
+            })
+            scrollToBottom()
+          } else if (chunk.type === 'error') {
+            console.error('Stream error:', chunk.message)
+            messages.value[assistantIndex].content = '抱歉，发生了错误，请稍后重试。'
+          }
         }
-      }
-    )
+      )
 
-    currentSessionId.value = result.sessionId
-    messages.value[assistantIndex].sources = result.sources
-    messages.value[assistantIndex].search_results = result.searchResults
+      currentSessionId.value = result.sessionId
+      messages.value[assistantIndex].thinkingSteps = result.thinkingSteps
+    } else {
+      // 传统RAG模式
+      const result = await chatAPI.sendMessageStream(
+        {
+          message: newContent,
+          session_id: currentSessionId.value,
+          kb_ids: selectedKbIds.value,
+          use_web_search: useWebSearch.value
+        },
+        (chunk) => {
+          if (chunk.type === 'chunk' && chunk.content) {
+            messages.value[assistantIndex].content += chunk.content
+            scrollToBottom()
+          } else if (chunk.type === 'error') {
+            console.error('Stream error:', chunk.message)
+            messages.value[assistantIndex].content = '抱歉，发生了错误，请稍后重试。'
+          }
+        }
+      )
+
+      currentSessionId.value = result.sessionId
+      messages.value[assistantIndex].sources = result.sources
+      messages.value[assistantIndex].search_results = result.searchResults
+    }
+
     saveState()
-
     await loadSessions()
   } catch (error) {
     console.error('Chat error:', error)
@@ -765,33 +900,90 @@ const regenerateResponse = async (assistantIndex: number) => {
       role: 'assistant',
       content: '',
       sources: undefined,
-      search_results: undefined
+      search_results: undefined,
+      thinkingSteps: undefined
     })
     scrollToBottom()
 
-    const result = await chatAPI.sendMessageStream(
-      {
-        message: userMessage,
-        session_id: currentSessionId.value,
-        kb_ids: selectedKbIds.value,
-        use_web_search: useWebSearch.value
-      },
-      (chunk) => {
-        if (chunk.type === 'chunk' && chunk.content) {
-          messages.value[newAssistantIndex].content += chunk.content
-          scrollToBottom()
-        } else if (chunk.type === 'error') {
-          console.error('Stream error:', chunk.message)
-          messages.value[newAssistantIndex].content = '抱歉，发生了错误，请稍后重试。'
+    if (useAgentMode.value) {
+      // Agent模式
+      const result = await agentAPI.sendMessageStream(
+        {
+          message: userMessage,
+          session_id: currentSessionId.value,
+          kb_ids: selectedKbIds.value.length > 0 ? selectedKbIds.value : undefined,
+          use_web_search: useWebSearch.value,
+          show_thinking: true
+        },
+        (chunk) => {
+          if (chunk.type === 'chunk' && chunk.content) {
+            messages.value[newAssistantIndex].content += chunk.content
+            scrollToBottom()
+          } else if (chunk.type === 'thought') {
+            if (!messages.value[newAssistantIndex].thinkingSteps) {
+              messages.value[newAssistantIndex].thinkingSteps = []
+            }
+            messages.value[newAssistantIndex].thinkingSteps!.push({
+              type: 'thought',
+              content: chunk.content || ''
+            })
+            scrollToBottom()
+          } else if (chunk.type === 'tool_call') {
+            if (!messages.value[newAssistantIndex].thinkingSteps) {
+              messages.value[newAssistantIndex].thinkingSteps = []
+            }
+            messages.value[newAssistantIndex].thinkingSteps!.push({
+              type: 'tool_call',
+              content: chunk.content || '',
+              tool_name: chunk.tool_name,
+              tool_args: chunk.tool_args
+            })
+            scrollToBottom()
+          } else if (chunk.type === 'tool_result') {
+            if (!messages.value[newAssistantIndex].thinkingSteps) {
+              messages.value[newAssistantIndex].thinkingSteps = []
+            }
+            messages.value[newAssistantIndex].thinkingSteps!.push({
+              type: 'tool_result',
+              content: chunk.content || '',
+              tool_name: chunk.tool_name
+            })
+            scrollToBottom()
+          } else if (chunk.type === 'error') {
+            console.error('Stream error:', chunk.message)
+            messages.value[newAssistantIndex].content = '抱歉，发生了错误，请稍后重试。'
+          }
         }
-      }
-    )
+      )
 
-    currentSessionId.value = result.sessionId
-    messages.value[newAssistantIndex].sources = result.sources
-    messages.value[newAssistantIndex].search_results = result.searchResults
+      currentSessionId.value = result.sessionId
+      messages.value[newAssistantIndex].thinkingSteps = result.thinkingSteps
+    } else {
+      // 传统RAG模式
+      const result = await chatAPI.sendMessageStream(
+        {
+          message: userMessage,
+          session_id: currentSessionId.value,
+          kb_ids: selectedKbIds.value,
+          use_web_search: useWebSearch.value
+        },
+        (chunk) => {
+          if (chunk.type === 'chunk' && chunk.content) {
+            messages.value[newAssistantIndex].content += chunk.content
+            scrollToBottom()
+          } else if (chunk.type === 'error') {
+            console.error('Stream error:', chunk.message)
+            messages.value[newAssistantIndex].content = '抱歉，发生了错误，请稍后重试。'
+          }
+        }
+      )
+
+      currentSessionId.value = result.sessionId
+      messages.value[newAssistantIndex].sources = result.sources
+      messages.value[newAssistantIndex].search_results = result.searchResults
+    }
+
     saveState()
-
     await loadSessions()
   } catch (error) {
     console.error('Regenerate error:', error)
@@ -1454,6 +1646,12 @@ onMounted(() => {
   background: var(--color-primary-light);
   border-color: var(--color-primary);
   color: var(--color-primary-dark);
+}
+
+.toolbar-btn.agent-mode-btn.active {
+  background: linear-gradient(135deg, #e0e7ff 0%, #f0f4ff 100%);
+  border-color: #6366f1;
+  color: #4f46e5;
 }
 
 .toolbar-btn svg {

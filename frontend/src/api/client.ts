@@ -300,3 +300,194 @@ export const settingsAPI = {
   }
 }
 
+// Agent聊天API - 流式响应
+export interface AgentStreamMessage {
+  type: 'chunk' | 'thought' | 'tool_call' | 'tool_result' | 'end' | 'error'
+  content?: string
+  session_id?: number
+  tool_name?: string
+  tool_args?: Record<string, any>
+  thinking_steps?: Array<{
+    type: string
+    content: string
+    tool_name?: string
+    tool_args?: Record<string, any>
+  }>
+  message?: string
+}
+
+export interface ThinkingStep {
+  type: 'thought' | 'tool_call' | 'tool_result'
+  content: string
+  tool_name?: string
+  tool_args?: Record<string, any>
+}
+
+export const agentAPI = {
+  // 发送消息 - 流式响应
+  sendMessageStream: async (
+    data: {
+      message: string
+      session_id?: number
+      kb_ids?: number[]
+      use_web_search?: boolean
+      show_thinking?: boolean
+    },
+    onChunk: (message: AgentStreamMessage) => void
+  ): Promise<{ sessionId: number; thinkingSteps?: ThinkingStep[] }> => {
+    const response = await fetch(`${API_BASE_URL}/chat/agent`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(data)
+    })
+
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+
+    const reader = response.body?.getReader()
+    const decoder = new TextDecoder()
+
+    if (!reader) {
+      throw new Error('无法读取响应流')
+    }
+
+    let sessionId: number | undefined
+    let thinkingSteps: ThinkingStep[] = []
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+
+      if (done) break
+
+      // 解码并追加到缓冲区
+      buffer += decoder.decode(value, { stream: true })
+
+      // 处理 SSE 格式的消息
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || '' // 保留最后一个不完整的行
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const msgData = JSON.parse(line.slice(6))
+            onChunk(msgData)
+
+            if (msgData.type === 'end') {
+              sessionId = msgData.session_id
+              thinkingSteps = msgData.thinking_steps || []
+            }
+          } catch (e) {
+            console.error('Failed to parse SSE data:', e)
+          }
+        }
+      }
+    }
+
+    return {
+      sessionId: sessionId || data.session_id!,
+      thinkingSteps
+    }
+  }
+}
+
+// MCP API
+export interface MCPServerConfig {
+  name: string
+  transport: 'stdio' | 'http' | 'streamable-http'
+  command?: string
+  args?: string[]
+  url?: string
+}
+
+export interface MCPServer extends MCPServerConfig {
+  status: string
+}
+
+export interface MCPTool {
+  name: string
+  description?: string
+}
+
+export interface MCPStatus {
+  initialized: boolean
+  servers: MCPServer[]
+  tools: MCPTool[]
+}
+
+export const mcpAPI = {
+  // 获取MCP状态
+  getStatus: async (): Promise<MCPStatus> => {
+    const response = await fetch(`${API_BASE_URL}/mcp/status`)
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  },
+
+  // 获取服务器列表
+  getServers: async (): Promise<MCPServer[]> => {
+    const response = await fetch(`${API_BASE_URL}/mcp/servers`)
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  },
+
+  // 添加服务器
+  addServer: async (config: MCPServerConfig): Promise<MCPServer> => {
+    const response = await fetch(`${API_BASE_URL}/mcp/servers`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(config)
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '添加服务器失败')
+    }
+    return response.json()
+  },
+
+  // 删除服务器
+  removeServer: async (name: string) => {
+    const response = await fetch(`${API_BASE_URL}/mcp/servers/${encodeURIComponent(name)}`, {
+      method: 'DELETE'
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '删除服务器失败')
+    }
+    return response.json()
+  },
+
+  // 获取工具列表
+  getTools: async (): Promise<MCPTool[]> => {
+    const response = await fetch(`${API_BASE_URL}/mcp/tools`)
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  },
+
+  // 重新加载MCP服务器
+  reload: async () => {
+    const response = await fetch(`${API_BASE_URL}/mcp/reload`, {
+      method: 'POST'
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '重新加载失败')
+    }
+    return response.json()
+  }
+}
+

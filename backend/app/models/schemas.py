@@ -94,5 +94,21 @@ class KnowledgeBaseRenameRequest(BaseModel):
     description: Optional[str] = None
 
 
+# Agent Chat Schemas
+class AgentChatRequest(BaseModel):
+    message: str = Field(..., min_length=1, description="用户消息")
+    session_id: Optional[int] = None
+    kb_ids: Optional[List[int]] = Field(default=None, description="可选的知识库ID列表，Agent可自主选择")
+    use_web_search: bool = True
+    show_thinking: bool = True  # 是否展示思考过程
+
+
+class AgentStepResponse(BaseModel):
+    type: str  # "thought" | "tool_call" | "tool_result" | "answer" | "error"
+    content: str
+    tool_name: Optional[str] = None
+    tool_args: Optional[dict] = None
+
+
 # Update forward references
 KnowledgeBaseWithDocuments.model_rebuild()
