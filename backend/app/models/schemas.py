@@ -7,12 +7,16 @@ from datetime import datetime
 class KnowledgeBaseCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255, description="知识库名称")
     description: Optional[str] = None
+    chunk_size: Optional[int] = Field(default=1000, ge=100, le=10000, description="分块大小")
+    chunk_overlap: Optional[int] = Field(default=200, ge=0, le=2000, description="分块重叠")
 
 
 class KnowledgeBaseResponse(BaseModel):
     id: int
     name: str
     description: Optional[str]
+    chunk_size: int = 1000
+    chunk_overlap: int = 200
     created_at: datetime
 
     class Config:
@@ -66,6 +70,10 @@ class ChatMessageResponse(BaseModel):
     role: str
     content: str
     created_at: datetime
+    # 可选的metadata字段
+    sources: Optional[List[str]] = None
+    search_results: Optional[List[dict]] = None
+    thinking_steps: Optional[List[dict]] = None
 
     class Config:
         from_attributes = True
@@ -92,6 +100,8 @@ class SessionRenameRequest(BaseModel):
 class KnowledgeBaseRenameRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255, description="知识库名称")
     description: Optional[str] = None
+    chunk_size: Optional[int] = Field(default=None, ge=100, le=10000, description="分块大小")
+    chunk_overlap: Optional[int] = Field(default=None, ge=0, le=2000, description="分块重叠")
 
 
 # Agent Chat Schemas

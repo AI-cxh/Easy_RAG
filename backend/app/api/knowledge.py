@@ -26,7 +26,12 @@ async def create_knowledge_base(kb_data: KnowledgeBaseCreate, db: Session = Depe
     if existing:
         raise HTTPException(status_code=400, detail="知识库名称已存在")
 
-    knowledge_base = KnowledgeBase(name=kb_data.name, description=kb_data.description)
+    knowledge_base = KnowledgeBase(
+        name=kb_data.name,
+        description=kb_data.description,
+        chunk_size=kb_data.chunk_size or 1000,
+        chunk_overlap=kb_data.chunk_overlap or 200
+    )
     db.add(knowledge_base)
     db.commit()
     db.refresh(knowledge_base)
@@ -60,7 +65,7 @@ async def delete_knowledge_base(kb_id: int, db: Session = Depends(get_db)):
 
 @router.put("/knowledge/{kb_id}")
 async def update_knowledge_base(kb_id: int, request: KnowledgeBaseRenameRequest, db: Session = Depends(get_db)):
-    """更新知识库名称和描述"""
+    """更新知识库信息"""
     knowledge_base = db.query(KnowledgeBase).filter(KnowledgeBase.id == kb_id).first()
     if not knowledge_base:
         raise HTTPException(status_code=404, detail="知识库不存在")
@@ -76,9 +81,20 @@ async def update_knowledge_base(kb_id: int, request: KnowledgeBaseRenameRequest,
     knowledge_base.name = request.name
     if request.description is not None:
         knowledge_base.description = request.description
+    if request.chunk_size is not None:
+        knowledge_base.chunk_size = request.chunk_size
+    if request.chunk_overlap is not None:
+        knowledge_base.chunk_overlap = request.chunk_overlap
 
     db.commit()
-    return {"message": "知识库已更新", "id": kb_id, "name": request.name, "description": request.description}
+    return {
+        "message": "知识库已更新",
+        "id": kb_id,
+        "name": request.name,
+        "description": request.description,
+        "chunk_size": knowledge_base.chunk_size,
+        "chunk_overlap": knowledge_base.chunk_overlap
+    }
 
 
 @router.get("/knowledge/{kb_id}/documents", response_model=DocumentListResponse)

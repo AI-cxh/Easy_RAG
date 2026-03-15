@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 
 from app.services.mcp_client import mcp_client
+from app.services.agent import agent_service
 from app.config import settings
 
 router = APIRouter()
@@ -109,6 +110,9 @@ async def add_mcp_server(config: MCPServerConfig):
     if not success:
         raise HTTPException(status_code=400, detail="Server with this name already exists")
 
+    # 重新初始化Agent服务以加载新的MCP工具
+    await agent_service.initialize()
+
     return MCPServerResponse(
         name=config.name,
         transport=config.transport,
@@ -126,6 +130,9 @@ async def remove_mcp_server(name: str):
 
     if not success:
         raise HTTPException(status_code=404, detail=f"Server '{name}' not found")
+
+    # 重新初始化Agent服务以更新MCP工具
+    await agent_service.initialize()
 
     return {"message": f"Server '{name}' removed successfully"}
 
@@ -146,11 +153,16 @@ async def list_mcp_tools():
 @router.post("/mcp/reload")
 async def reload_mcp_servers():
     """重新加载MCP服务器配置"""
+    # 重新初始化MCP客户端
     await mcp_client.close()
     await mcp_client.initialize(settings.MCP_SERVERS)
+
+    # 重新初始化Agent服务以加载新的MCP工具
+    await agent_service.initialize()
 
     return {
         "message": "MCP servers reloaded",
         "initialized": mcp_client.is_initialized(),
-        "tools_count": len(mcp_client.get_tools())
+        "tools_count": len(mcp_client.get_tools()),
+        "agent_tools_count": len(agent_service.get_all_tools())
     }

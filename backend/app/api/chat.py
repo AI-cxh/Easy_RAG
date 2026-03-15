@@ -17,6 +17,17 @@ from app.services.embedding import embedding_service
 from app.services.agent import agent_service
 
 
+def parse_message_metadata(msg: ChatMessage) -> dict:
+    """解析消息的extra_data字段"""
+    extra_data = {}
+    if msg.extra_data:
+        try:
+            extra_data = json.loads(msg.extra_data)
+        except:
+            pass
+    return extra_data
+
+
 router = APIRouter()
 
 
@@ -47,7 +58,19 @@ async def stream_response(
 
     # 保存完整的助手消息到数据库
     try:
-        assistant_msg = ChatMessage(session_id=session_id, role="assistant", content=full_response)
+        # 构建extra_data
+        extra_data = {}
+        if sources:
+            extra_data["sources"] = sources
+        if search_results:
+            extra_data["search_results"] = search_results
+
+        assistant_msg = ChatMessage(
+            session_id=session_id,
+            role="assistant",
+            content=full_response,
+            extra_data=json.dumps(extra_data, ensure_ascii=False) if extra_data else None
+        )
         db.add(assistant_msg)
         db.commit()
     except Exception as e:
@@ -173,7 +196,8 @@ async def get_session(session_id: int, db: Session = Depends(get_db)):
                 "session_id": msg.session_id,
                 "role": msg.role,
                 "content": msg.content,
-                "created_at": msg.created_at
+                "created_at": msg.created_at,
+                **parse_message_metadata(msg)  # 展开 metadata 中的字段
             }
             for msg in messages
         ]
@@ -211,6 +235,8 @@ async def stream_agent_response(
     """流式发送Agent响应"""
     full_response = ""
     thinking_steps = []
+    search_results = None
+    sources = None
 
     try:
         async for event in agent_generator:
@@ -237,6 +263,11 @@ async def stream_agent_response(
                 }
                 yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
 
+            elif event_type == "search_data":
+                # 搜索结果数据
+                search_results = event.get("search_results")
+                sources = event.get("sources")
+
             elif event_type == "error":
                 # 错误
                 error_data = {"type": "error", "message": event.get("content", "未知错误")}
@@ -250,7 +281,21 @@ async def stream_agent_response(
 
     # 保存完整的助手消息到数据库
     try:
-        assistant_msg = ChatMessage(session_id=session_id, role="assistant", content=full_response)
+        # 构建extra_data，保存thinking_steps和搜索结果
+        extra_data = {}
+        if thinking_steps:
+            extra_data["thinking_steps"] = thinking_steps
+        if search_results:
+            extra_data["search_results"] = search_results
+        if sources:
+            extra_data["sources"] = sources
+
+        assistant_msg = ChatMessage(
+            session_id=session_id,
+            role="assistant",
+            content=full_response,
+            extra_data=json.dumps(extra_data, ensure_ascii=False) if extra_data else None
+        )
         db.add(assistant_msg)
         db.commit()
     except Exception as e:
@@ -261,7 +306,9 @@ async def stream_agent_response(
     end_data = {
         "type": "end",
         "session_id": session_id,
-        "thinking_steps": thinking_steps if thinking_steps else None
+        "thinking_steps": thinking_steps if thinking_steps else None,
+        "search_results": search_results,
+        "sources": sources
     }
     yield f"data: {json.dumps(end_data, ensure_ascii=False)}\n\n"
 

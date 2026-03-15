@@ -1,8 +1,9 @@
 """Agent服务：负责智能体驱动的RAG流程"""
-from typing import List, Dict, Optional, AsyncGenerator, Any
+from typing import List, Dict, Optional, AsyncGenerator, Any, Tuple
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
 from langchain_core.tools import BaseTool
+import json
 
 from app.config import settings
 from app.services.tools import get_all_tools
@@ -26,9 +27,6 @@ class AgentService:
 
     async def initialize(self) -> None:
         """异步初始化，加载MCP工具"""
-        if self._initialized:
-            return
-
         # 加载MCP工具
         mcp_tools = mcp_client.get_tools()
         self.tools = self._builtin_tools + mcp_tools
@@ -56,12 +54,13 @@ class AgentService:
 2. 自主决定是否需要检索知识库
 3. 自主选择检索哪些知识库
 4. 进行网络搜索获取最新信息
-5. 综合多方面信息给出准确回答
+5. 使用可用的MCP工具执行特定任务
+6. 综合多方面信息给出准确回答
 
 工作流程：
-1. 首先分析用户问题，判断是否需要检索外部信息
+1. 首先分析用户问题，判断需要使用什么工具
 2. 如果问题简单或属于常识，可以直接回答
-3. 如果需要专业知识或特定信息，使用工具进行检索
+3. 如果需要专业知识或特定信息，优先使用合适的工具
 4. 分析检索结果，判断是否需要更多信息
 5. 综合所有信息，生成最终回答
 
@@ -78,16 +77,30 @@ class AgentService:
 知识库检索指南：
 - 使用 list_knowledge_bases 查看可用的知识库
 - 使用 knowledge_search 在指定知识库中搜索相关文档
-- 可以多次调用 knowledge_search 检索不同知识库""")
+- 可以多次调用 knowledge_search 检索不同知识库
+- 适用于查询知识库中存储的专业文档和信息""")
 
         if use_web_search:
             tool_instructions.append("""
 网络搜索指南：
 - 使用 web_search 在网络上搜索最新信息
-- 适合查询实时信息、新闻、技术文档等""")
+- 适合查询实时信息、新闻、技术文档等
+- 当知识库中没有相关信息时使用""")
+
+        # 添加MCP工具说明
+        mcp_tools_info = []
+        for tool in self.tools[len(self._builtin_tools):]:  # 只获取MCP工具
+            tool_desc = getattr(tool, 'description', '') or f"工具: {tool.name}"
+            mcp_tools_info.append(f"- {tool.name}: {tool_desc[:100]}")
+
+        if mcp_tools_info:
+            tool_instructions.append(f"""
+MCP工具（可用）：
+{chr(10).join(mcp_tools_info)}
+根据问题需要，可以使用上述MCP工具来执行特定任务""")
 
         if tool_instructions:
-            base_prompt += "\n" + "\n".join(tool_instructions)
+            base_prompt += "\n\n" + "\n".join(tool_instructions)
 
         return base_prompt
 
@@ -136,6 +149,10 @@ class AgentService:
         # 绑定工具到LLM
         llm_with_tools = self.llm.bind_tools(self.tools)
 
+        # 收集搜索结果
+        collected_search_results = []
+        collected_sources = []
+
         # 迭代执行
         iteration = 0
         max_iterations = settings.AGENT_MAX_ITERATIONS
@@ -172,7 +189,14 @@ class AgentService:
                         }
 
                         # 执行工具
-                        tool_result = await self._execute_tool(tool_name, tool_args)
+                        tool_result, search_data = await self._execute_tool_with_data(tool_name, tool_args)
+
+                        # 收集搜索结果
+                        if search_data:
+                            if search_data.get("type") == "web_search":
+                                collected_search_results.extend(search_data.get("results", []))
+                            elif search_data.get("type") == "knowledge_search":
+                                collected_sources.extend(search_data.get("sources", []))
 
                         # 发送工具结果事件
                         yield {
@@ -196,6 +220,14 @@ class AgentService:
                                 "type": "answer",
                                 "content": chunk.content
                             }
+
+                    # 发送收集到的搜索结果
+                    if collected_search_results or collected_sources:
+                        yield {
+                            "type": "search_data",
+                            "search_results": collected_search_results if collected_search_results else None,
+                            "sources": list(set(collected_sources)) if collected_sources else None
+                        }
                     return
 
             except Exception as e:
@@ -211,28 +243,71 @@ class AgentService:
             "content": "达到最大迭代次数，请简化问题或稍后重试。"
         }
 
-    async def _execute_tool(self, tool_name: str, tool_args: Dict) -> str:
+    async def _execute_tool_with_data(self, tool_name: str, tool_args: Dict) -> Tuple[str, Optional[Dict]]:
         """
-        执行工具调用
+        执行工具调用并返回结果和额外数据
 
         Args:
             tool_name: 工具名称
             tool_args: 工具参数
 
         Returns:
-            工具执行结果字符串
+            (工具执行结果字符串, 额外数据字典)
         """
         # 查找对应的工具
         for tool in self.tools:
             if tool.name == tool_name:
                 try:
-                    # 执行工具
-                    result = tool.invoke(tool_args)
-                    return str(result)
-                except Exception as e:
-                    return f"工具执行出错: {str(e)}"
+                    # 执行工具 - 优先使用异步调用
+                    if hasattr(tool, 'ainvoke'):
+                        result = await tool.ainvoke(tool_args)
+                    else:
+                        result = tool.invoke(tool_args)
 
-        return f"未找到工具: {tool_name}"
+                    # 解析搜索结果
+                    search_data = None
+                    if tool_name == "web_search":
+                        search_data = self._parse_web_search_result(str(result))
+                    elif tool_name == "knowledge_search":
+                        search_data = self._parse_knowledge_search_result(str(result))
+
+                    return str(result), search_data
+                except Exception as e:
+                    return f"工具执行出错: {str(e)}", None
+
+        return f"未找到工具: {tool_name}", None
+
+    def _parse_web_search_result(self, result: str) -> Dict:
+        """解析网络搜索结果，提取结构化数据"""
+        search_results = []
+        # 解析格式: [搜索结果1] 标题: xxx\n链接: xxx\n摘要: xxx
+        import re
+        pattern = r'\[搜索结果\d+\] 标题: (.*?)\n链接: (.*?)\n摘要: (.*?)(?=\n\n---|\Z)'
+        matches = re.findall(pattern, result, re.DOTALL)
+
+        for title, url, snippet in matches:
+            search_results.append({
+                "title": title.strip(),
+                "url": url.strip(),
+                "snippet": snippet.strip()
+            })
+
+        return {"type": "web_search", "results": search_results}
+
+    def _parse_knowledge_search_result(self, result: str) -> Dict:
+        """解析知识库搜索结果，提取来源"""
+        sources = []
+        # 解析格式: [文档1] 来源: xxx
+        import re
+        pattern = r'\[文档\d+\] 来源: ([^\n(]+)'
+        matches = re.findall(pattern, result)
+
+        for source in matches:
+            source = source.strip()
+            if source and source not in sources:
+                sources.append(source)
+
+        return {"type": "knowledge_search", "sources": sources}
 
     async def run_simple(
         self,

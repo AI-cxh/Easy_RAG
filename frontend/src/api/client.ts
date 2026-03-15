@@ -13,7 +13,12 @@ export const knowledgeAPI = {
   },
 
   // 创建知识库
-  create: async (data: { name: string; description?: string }) => {
+  create: async (data: {
+    name: string
+    description?: string
+    chunk_size?: number
+    chunk_overlap?: number
+  }) => {
     const response = await fetch(`${API_BASE_URL}/knowledge`, {
       method: 'POST',
       headers: {
@@ -61,7 +66,12 @@ export const knowledgeAPI = {
   },
 
   // 重命名知识库
-  update: async (id: number, data: { name: string; description?: string }) => {
+  update: async (id: number, data: {
+    name: string
+    description?: string
+    chunk_size?: number
+    chunk_overlap?: number
+  }) => {
     const response = await fetch(`${API_BASE_URL}/knowledge/${id}`, {
       method: 'PUT',
       headers: {
@@ -313,6 +323,8 @@ export interface AgentStreamMessage {
     tool_name?: string
     tool_args?: Record<string, any>
   }>
+  search_results?: Array<{ title: string; url: string; snippet?: string }>
+  sources?: string[]
   message?: string
 }
 
@@ -334,7 +346,12 @@ export const agentAPI = {
       show_thinking?: boolean
     },
     onChunk: (message: AgentStreamMessage) => void
-  ): Promise<{ sessionId: number; thinkingSteps?: ThinkingStep[] }> => {
+  ): Promise<{
+    sessionId: number
+    thinkingSteps?: ThinkingStep[]
+    searchResults?: Array<{ title: string; url: string; snippet?: string }>
+    sources?: string[]
+  }> => {
     const response = await fetch(`${API_BASE_URL}/chat/agent`, {
       method: 'POST',
       headers: {
@@ -357,6 +374,8 @@ export const agentAPI = {
 
     let sessionId: number | undefined
     let thinkingSteps: ThinkingStep[] = []
+    let searchResults: Array<{ title: string; url: string; snippet?: string }> = []
+    let sources: string[] = []
     let buffer = ''
 
     while (true) {
@@ -380,6 +399,8 @@ export const agentAPI = {
             if (msgData.type === 'end') {
               sessionId = msgData.session_id
               thinkingSteps = msgData.thinking_steps || []
+              searchResults = msgData.search_results || []
+              sources = msgData.sources || []
             }
           } catch (e) {
             console.error('Failed to parse SSE data:', e)
@@ -390,7 +411,9 @@ export const agentAPI = {
 
     return {
       sessionId: sessionId || data.session_id!,
-      thinkingSteps
+      thinkingSteps,
+      searchResults,
+      sources
     }
   }
 }

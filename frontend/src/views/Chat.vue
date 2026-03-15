@@ -186,10 +186,28 @@
                   <span v-if="!msg.content && isSending && index === messages.length - 1" class="typing-indicator">
                     <span></span><span></span><span></span>
                   </span>
-                  <!-- 来源信息 -->
+                  <!-- 知识库来源信息 -->
                   <div v-if="msg.sources?.length" class="message-sources">
                     <span class="sources-label">参考来源:</span>
                     <span v-for="(source, i) in msg.sources" :key="i" class="source-tag">{{ source }}</span>
+                  </div>
+                  <!-- 联网搜索来源 -->
+                  <div v-if="msg.search_results?.length" class="message-sources web-sources">
+                    <span class="sources-label">联网搜索来源:</span>
+                    <a
+                      v-for="(result, i) in msg.search_results"
+                      :key="i"
+                      :href="result.url"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="source-link"
+                      :title="result.snippet"
+                    >
+                      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" class="link-icon">
+                        <path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/>
+                      </svg>
+                      {{ result.title || result.url }}
+                    </a>
                   </div>
                   <!-- 助手消息操作按钮 -->
                   <div v-if="msg.content && !isSending" class="message-actions">
@@ -500,7 +518,12 @@ const loadSession = async (sessionId: number) => {
   try {
     const result = await chatAPI.getSession(sessionId)
     currentSessionId.value = sessionId
-    messages.value = result.messages || []
+    // 转换字段名：thinking_steps -> thinkingSteps
+    messages.value = (result.messages || []).map((msg: any) => ({
+      ...msg,
+      thinkingSteps: msg.thinking_steps || msg.thinkingSteps,
+      searchResults: msg.search_results || msg.searchResults
+    }))
     hasUserInteracted.value = messages.value.length > 0
     saveState()
   } catch (error) {
@@ -669,6 +692,13 @@ const handleSend = async () => {
 
       currentSessionId.value = result.sessionId
       messages.value[assistantIndex].thinkingSteps = result.thinkingSteps
+      // 保存搜索结果和来源
+      if (result.searchResults && result.searchResults.length > 0) {
+        messages.value[assistantIndex].search_results = result.searchResults
+      }
+      if (result.sources && result.sources.length > 0) {
+        messages.value[assistantIndex].sources = result.sources
+      }
     } else {
       // 传统RAG模式
       const result = await chatAPI.sendMessageStream(
@@ -841,6 +871,13 @@ const saveMessageEdit = async (index: number) => {
 
       currentSessionId.value = result.sessionId
       messages.value[assistantIndex].thinkingSteps = result.thinkingSteps
+      // 保存搜索结果和来源
+      if (result.searchResults && result.searchResults.length > 0) {
+        messages.value[assistantIndex].search_results = result.searchResults
+      }
+      if (result.sources && result.sources.length > 0) {
+        messages.value[assistantIndex].sources = result.sources
+      }
     } else {
       // 传统RAG模式
       const result = await chatAPI.sendMessageStream(
@@ -958,6 +995,13 @@ const regenerateResponse = async (assistantIndex: number) => {
 
       currentSessionId.value = result.sessionId
       messages.value[newAssistantIndex].thinkingSteps = result.thinkingSteps
+      // 保存搜索结果和来源
+      if (result.searchResults && result.searchResults.length > 0) {
+        messages.value[newAssistantIndex].search_results = result.searchResults
+      }
+      if (result.sources && result.sources.length > 0) {
+        messages.value[newAssistantIndex].sources = result.sources
+      }
     } else {
       // 传统RAG模式
       const result = await chatAPI.sendMessageStream(
@@ -1429,6 +1473,42 @@ onMounted(() => {
   background: var(--bg-tertiary);
   border-radius: var(--radius-full);
   color: var(--text-secondary);
+}
+
+/* 联网搜索来源链接 */
+.web-sources {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.source-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-3);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-full);
+  color: var(--color-primary);
+  text-decoration: none;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: all var(--duration-fast);
+}
+
+.source-link:hover {
+  background: var(--color-primary);
+  color: white;
+}
+
+.source-link .link-icon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
 }
 
 /* 消息操作按钮 */
