@@ -1,0 +1,17 @@
+{
+  "llm": {
+    "model": "deepseek-chat",
+    "apiKey": "sk-3e63a0bd10724616af4b6cc7711283c2",
+    "apiUrl": "https://api.deepseek.com"
+  },
+  "embedding": {
+    "model": "BAAI/bge-m3",
+    "apiKey": "sk-cdzipmggimknxnziuggxjlpwcxyjpmzppwxwwkhmshorboad",
+    "apiUrl": "https://api.siliconflow.cn/v1"
+  },
+  "rerank": {
+    "model": "BAAI/bge-reranker-v2-m3",
+    "apiKey": "sk-lzsyjhddpvjvtmgbkaviuybogbgopupznjfcdzelyhzgnfea",
+    "apiUrl": "https://api.siliconflow.cn/v1"
+  }
+}

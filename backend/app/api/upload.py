@@ -55,8 +55,12 @@ async def upload_file(
         # 提取文本
         text = file_parser.extract_text(file_path, file.filename)
 
-        # 分块
-        chunks = embedding_service.split_text(text)
+        # 分块 - 使用知识库的分块设置
+        chunks = embedding_service.split_text(
+            text,
+            chunk_size=knowledge_base.chunk_size,
+            chunk_overlap=knowledge_base.chunk_overlap
+        )
 
         if not chunks:
             raise HTTPException(status_code=400, detail="无法从文件中提取有效文本")

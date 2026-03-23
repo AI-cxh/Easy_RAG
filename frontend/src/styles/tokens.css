@@ -127,6 +127,7 @@
   --header-height: 64px;
   --input-max-width: 800px;
   --nav-rail-width: 72px;
+  --content-max-width: 800px;
 
   /* ========== 兼容旧变量名 ========== */
   --primary-color: var(--color-primary);

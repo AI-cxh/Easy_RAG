@@ -1,0 +1,14 @@
+{
+  "servers": [
+    {
+      "name": "Weather-query",
+      "transport": "streamable-http",
+      "url": "https://mcp.api-inference.modelscope.net/added7d54d1540/mcp"
+    },
+    {
+      "name": "Bazi-MCP",
+      "transport": "streamable-http",
+      "url": "https://mcp.api-inference.modelscope.net/7a499a981ce249/mcp"
+    }
+  ]
+}

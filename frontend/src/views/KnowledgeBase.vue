@@ -89,6 +89,20 @@
           <div class="detail-header">
             <h2 class="detail-title">{{ selectedKb?.name }}</h2>
             <p v-if="selectedKb?.description" class="detail-desc">{{ selectedKb?.description }}</p>
+            <div class="chunk-settings">
+              <span class="setting-badge">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/>
+                </svg>
+                分块大小: {{ selectedKb?.chunk_size || 1000 }}
+              </span>
+              <span class="setting-badge">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M14 17H4v2h10v-2zm6-8H4v2h16V9zM4 15h16v-2H4v2zM4 5v2h16V5H4z"/>
+                </svg>
+                分块重叠: {{ selectedKb?.chunk_overlap || 200 }}
+              </span>
+            </div>
           </div>
 
           <!-- 上传区域 -->
@@ -193,6 +207,32 @@
                 rows="3"
               />
             </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">分块大小</label>
+                <input
+                  v-model.number="newKbForm.chunk_size"
+                  type="number"
+                  class="input"
+                  min="100"
+                  max="10000"
+                  placeholder="1000"
+                />
+                <span class="form-hint">字符数 (100-10000)</span>
+              </div>
+              <div class="form-group">
+                <label class="form-label">分块重叠</label>
+                <input
+                  v-model.number="newKbForm.chunk_overlap"
+                  type="number"
+                  class="input"
+                  min="0"
+                  max="2000"
+                  placeholder="200"
+                />
+                <span class="form-hint">字符数 (0-2000)</span>
+              </div>
+            </div>
           </div>
           <div class="dialog-footer">
             <button class="btn btn-secondary" @click="showCreateDialog = false">取消</button>
@@ -207,9 +247,9 @@
     <!-- 重命名对话框 -->
     <Teleport to="body">
       <div v-if="editingKbId" class="dialog-overlay" @click.self="cancelKbEdit">
-        <div class="dialog">
+        <div class="dialog dialog-wide">
           <div class="dialog-header">
-            <h3 class="dialog-title">重命名知识库</h3>
+            <h3 class="dialog-title">编辑知识库</h3>
             <button class="dialog-close" @click="cancelKbEdit">&times;</button>
           </div>
           <div class="dialog-body">
@@ -223,6 +263,42 @@
                 @keydown.enter="saveKbName(editingKbId!)"
               />
             </div>
+            <div class="form-group">
+              <label class="form-label">描述</label>
+              <textarea
+                v-model="editingDescription"
+                class="input textarea"
+                placeholder="输入描述（可选）"
+                rows="2"
+              />
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">分块大小</label>
+                <input
+                  v-model.number="editingChunkSize"
+                  type="number"
+                  class="input"
+                  min="100"
+                  max="10000"
+                  placeholder="1000"
+                />
+                <span class="form-hint">字符数 (100-10000)</span>
+              </div>
+              <div class="form-group">
+                <label class="form-label">分块重叠</label>
+                <input
+                  v-model.number="editingChunkOverlap"
+                  type="number"
+                  class="input"
+                  min="0"
+                  max="2000"
+                  placeholder="200"
+                />
+                <span class="form-hint">字符数 (0-2000)</span>
+              </div>
+            </div>
+            <p class="setting-note">注意：修改分块设置后，新上传的文档将使用新设置。已有文档需重新上传才能生效。</p>
           </div>
           <div class="dialog-footer">
             <button class="btn btn-secondary" @click="cancelKbEdit">取消</button>
@@ -242,6 +318,8 @@ interface KnowledgeBase {
   id: number
   name: string
   description?: string
+  chunk_size?: number
+  chunk_overlap?: number
   created_at?: string
 }
 
@@ -263,10 +341,15 @@ const fileInputRef = ref<HTMLInputElement>()
 
 const editingKbId = ref<number>()
 const editingName = ref('')
+const editingDescription = ref('')
+const editingChunkSize = ref(1000)
+const editingChunkOverlap = ref(200)
 
 const newKbForm = ref({
   name: '',
-  description: ''
+  description: '',
+  chunk_size: 1000,
+  chunk_overlap: 200
 })
 
 const isDragover = ref(false)
@@ -316,7 +399,7 @@ const createKb = async () => {
   try {
     const result = await knowledgeAPI.create(newKbForm.value)
     showCreateDialog.value = false
-    newKbForm.value = { name: '', description: '' }
+    newKbForm.value = { name: '', description: '', chunk_size: 1000, chunk_overlap: 200 }
     await loadKnowledgeBases()
     if (result && result.id) {
       selectKb(result)
@@ -348,6 +431,9 @@ const deleteKb = async (id: number) => {
 const startEditKb = (kb: KnowledgeBase) => {
   editingKbId.value = kb.id
   editingName.value = kb.name
+  editingDescription.value = kb.description || ''
+  editingChunkSize.value = kb.chunk_size || 1000
+  editingChunkOverlap.value = kb.chunk_overlap || 200
 }
 
 const saveKbName = async (kbId: number) => {
@@ -357,11 +443,16 @@ const saveKbName = async (kbId: number) => {
   }
 
   try {
-    await knowledgeAPI.update(kbId, { name: editingName.value.trim() })
+    await knowledgeAPI.update(kbId, {
+      name: editingName.value.trim(),
+      description: editingDescription.value.trim() || undefined,
+      chunk_size: editingChunkSize.value,
+      chunk_overlap: editingChunkOverlap.value
+    })
     await loadKnowledgeBases()
   } catch (error: any) {
-    console.error('Failed to rename knowledge base:', error)
-    alert(error.message || '重命名失败')
+    console.error('Failed to update knowledge base:', error)
+    alert(error.message || '更新失败')
   } finally {
     cancelKbEdit()
   }
@@ -370,6 +461,9 @@ const saveKbName = async (kbId: number) => {
 const cancelKbEdit = () => {
   editingKbId.value = undefined
   editingName.value = ''
+  editingDescription.value = ''
+  editingChunkSize.value = 1000
+  editingChunkOverlap.value = 200
 }
 
 const triggerUpload = () => {
@@ -448,9 +542,9 @@ onMounted(() => {
   background: var(--bg-primary);
 }
 
-/* 左侧固定导航栏 */
+/* 左侧固定导航栏 - 自适应宽度 */
 .nav-rail {
-  width: var(--nav-rail-width);
+  width: clamp(56px, 8vw, 72px);
   background: var(--bg-secondary);
   border-right: 1px solid var(--border-subtle);
   display: flex;
@@ -462,8 +556,8 @@ onMounted(() => {
 }
 
 .nav-rail-btn {
-  width: 44px;
-  height: 44px;
+  width: clamp(36px, 5vw, 44px);
+  height: clamp(36px, 5vw, 44px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -507,8 +601,8 @@ onMounted(() => {
 }
 
 .nav-rail-btn svg {
-  width: 22px;
-  height: 22px;
+  width: clamp(18px, 2.5vw, 22px);
+  height: clamp(18px, 2.5vw, 22px);
   fill: currentColor;
   position: relative;
   z-index: 1;
@@ -527,8 +621,8 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: var(--space-4);
-  padding: 0 var(--space-8);
-  height: var(--header-height);
+  padding: 0 clamp(var(--space-4), 4vw, var(--space-8));
+  height: clamp(48px, 6vh, 64px);
   background: rgba(250, 248, 245, 0.85);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -538,7 +632,7 @@ onMounted(() => {
 .header-title {
   flex: 1;
   font-family: var(--font-display);
-  font-size: var(--text-xl);
+  font-size: clamp(var(--text-lg), 2vw, var(--text-xl));
   font-weight: var(--font-semibold);
   color: var(--text-primary);
   margin: 0;
@@ -558,9 +652,9 @@ onMounted(() => {
   overflow: hidden;
 }
 
-/* 侧边栏 */
+/* 侧边栏 - 自适应宽度 */
 .kb-sidebar {
-  width: 300px;
+  width: clamp(220px, 25vw, 300px);
   background: var(--bg-secondary);
   border-right: 1px solid var(--border-subtle);
   display: flex;
@@ -571,7 +665,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-5);
+  padding: clamp(var(--space-3), 2vw, var(--space-5));
   font-size: var(--text-sm);
   font-weight: var(--font-medium);
   color: var(--text-secondary);
@@ -658,7 +752,7 @@ onMounted(() => {
 .kb-main {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-8);
+  padding: clamp(var(--space-4), 3vw, var(--space-8));
 }
 
 .empty-main {
@@ -672,8 +766,8 @@ onMounted(() => {
 
 .empty-visual {
   position: relative;
-  width: 80px;
-  height: 80px;
+  width: clamp(60px, 8vw, 80px);
+  height: clamp(60px, 8vw, 80px);
   margin-bottom: var(--space-5);
 }
 
@@ -695,12 +789,12 @@ onMounted(() => {
 }
 
 .detail-header {
-  margin-bottom: var(--space-8);
+  margin-bottom: clamp(var(--space-5), 3vw, var(--space-8));
 }
 
 .detail-title {
   font-family: var(--font-display);
-  font-size: var(--text-3xl);
+  font-size: clamp(var(--text-xl), 3vw, var(--text-3xl));
   font-weight: var(--font-semibold);
   color: var(--text-primary);
   margin: 0 0 var(--space-2);
@@ -708,14 +802,38 @@ onMounted(() => {
 }
 
 .detail-desc {
-  font-size: var(--text-base);
+  font-size: clamp(var(--text-sm), 1.5vw, var(--text-base));
   color: var(--text-secondary);
   margin: 0;
 }
 
+.chunk-settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.setting-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-full);
+}
+
+.setting-badge svg {
+  width: 14px;
+  height: 14px;
+  fill: var(--text-muted);
+}
+
 /* 上传区域 */
 .upload-area {
-  margin-bottom: var(--space-8);
+  margin-bottom: clamp(var(--space-5), 3vw, var(--space-8));
 }
 
 .upload-zone {
@@ -723,7 +841,7 @@ onMounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: var(--space-10);
+  padding: clamp(var(--space-6), 5vw, var(--space-10));
   border: 2px dashed var(--border-default);
   border-radius: var(--radius-2xl);
   cursor: pointer;
@@ -921,12 +1039,39 @@ onMounted(() => {
   padding: var(--space-8);
 }
 
-/* 响应式 */
-@media (max-width: 768px) {
-  .kb-header {
-    padding: 0 var(--space-5);
-  }
+/* 表单行布局 */
+.form-row {
+  display: flex;
+  gap: var(--space-4);
+}
 
+.form-row .form-group {
+  flex: 1;
+}
+
+.form-hint {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-top: var(--space-1);
+}
+
+.setting-note {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  margin-top: var(--space-3);
+}
+
+/* 宽对话框 */
+.dialog-wide {
+  max-width: 520px;
+}
+
+/* 响应式 - 仅保留必要的覆盖样式 */
+@media (max-width: 768px) {
   .kb-content {
     flex-direction: column;
   }
@@ -936,14 +1081,6 @@ onMounted(() => {
     max-height: 220px;
     border-right: none;
     border-bottom: 1px solid var(--border-subtle);
-  }
-
-  .kb-main {
-    padding: var(--space-5);
-  }
-
-  .detail-title {
-    font-size: var(--text-2xl);
   }
 }
 </style>

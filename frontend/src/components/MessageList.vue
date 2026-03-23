@@ -51,13 +51,15 @@
 <script setup lang="ts">
 /**
  * 消息渲染组件
- * 渲染链：Markdown -> DOMPurify sanitize -> v-html
+ * 渲染链：Markdown -> KaTeX -> DOMPurify sanitize -> v-html
  * 安全说明：所有用户输入经过 marked 解析后，通过 DOMPurify 清洗，防止 XSS 攻击
  */
 import { marked } from 'marked'
 import hljs from 'highlight.js'
 import DOMPurify from 'dompurify'
+import katex from 'katex'
 import 'highlight.js/styles/github-dark.css'
+import 'katex/dist/katex.min.css'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -87,14 +89,29 @@ const ALLOWED_TAGS = [
   'a', 'b', 'i', 'strong', 'em', 'u', 's', 'br', 'p', 'div', 'span',
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
   'ul', 'ol', 'li', 'dl', 'dt', 'dd',
-  'table', 'thead', 'tbody', 'tr', 'th', 'td',
+  'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'caption', 'colgroup', 'col',
   'pre', 'code', 'blockquote',
-  'hr', 'img'
+  'hr', 'img',
+  // KaTeX 需要的标签
+  'math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'mfrac', 'msup', 'msub',
+  'msubsup', 'munder', 'mover', 'munderover', 'mroot', 'msqrt', 'mtable',
+  'mtr', 'mtd', 'mtext', 'mspace', 'mfenced', 'menclose', 'mpadded',
+  'mphantom', 'mglyph', 'maction', 'merror', 'annotation', 'annotation-xml'
 ]
 
 const ALLOWED_ATTR = [
   'href', 'title', 'alt', 'src', 'width', 'height',
-  'class', 'id', 'target', 'rel'
+  'class', 'id', 'target', 'rel',
+  // 表格属性
+  'colspan', 'rowspan', 'align', 'valign',
+  // KaTeX 需要的属性
+  'xmlns', 'display', 'scriptlevel', 'mathvariant', 'mathsize',
+  'mathcolor', 'mathbackground', 'stretchy', 'symmetric', 'maxsize',
+  'minsize', 'largeop', 'movablelimits', 'accent', 'accentunder',
+  'delimiter', 'separator', 'notation', 'linethickness', 'spacing',
+  'columnalign', 'rowalign', 'columnspacing', 'rowspacing', 'frame',
+  'framespacing', 'equalcolumns', 'equalrows', 'side', 'width',
+  'height', 'depth', 'lspace', 'rspace', 'operator', 'form'
 ]
 
 // 配置 DOMPurify 钩子：为外链添加安全属性
@@ -108,9 +125,47 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   }
 })
 
+/**
+ * 渲染数学公式
+ * 支持 $...$ 行内公式和 $$...$$ 块级公式
+ */
+const renderMath = (text: string): string => {
+  // 先处理块级公式 $$...$$
+  text = text.replace(/\$\$([\s\S]+?)\$\$/g, (_, math) => {
+    try {
+      return katex.renderToString(math.trim(), {
+        displayMode: true,
+        throwOnError: false,
+        output: 'html'
+      })
+    } catch (e) {
+      console.error('KaTeX block error:', e)
+      return `<span class="katex-error">${math}</span>`
+    }
+  })
+
+  // 再处理行内公式 $...$
+  // 注意：避免匹配 $$ 和货币符号
+  text = text.replace(/(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)/g, (_, math) => {
+    try {
+      return katex.renderToString(math.trim(), {
+        displayMode: false,
+        throwOnError: false,
+        output: 'html'
+      })
+    } catch (e) {
+      console.error('KaTeX inline error:', e)
+      return `<span class="katex-error">${math}</span>`
+    }
+  })
+
+  return text
+}
+
 const renderMessage = (content: string) => {
-  // 渲染链：Markdown -> sanitize -> v-html
-  const rawHtml = marked.parse(content) as string
+  // 渲染链：数学公式 -> Markdown -> sanitize -> v-html
+  const withMath = renderMath(content)
+  const rawHtml = marked.parse(withMath) as string
   return DOMPurify.sanitize(rawHtml, {
     ALLOWED_TAGS,
     ALLOWED_ATTR
@@ -285,6 +340,84 @@ const renderMessage = (content: string) => {
 
 .message.assistant :deep(a) {
   color: var(--color-primary);
+}
+
+/* 表格样式 */
+.message :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--space-4) 0;
+  font-size: var(--text-sm);
+  overflow-x: auto;
+  display: block;
+}
+
+.message :deep(thead) {
+  background: var(--bg-tertiary);
+}
+
+.message :deep(th) {
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  font-weight: var(--font-semibold);
+  border-bottom: 2px solid var(--border-default);
+}
+
+.message :deep(td) {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.message :deep(tbody tr:hover) {
+  background: var(--bg-hover);
+}
+
+.message :deep(tbody tr:last-child td) {
+  border-bottom: none;
+}
+
+/* 用户消息中的表格 */
+.message.user :deep(table) {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.message.user :deep(thead) {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.message.user :deep(th),
+.message.user :deep(td) {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* KaTeX 数学公式样式 */
+.message :deep(.katex) {
+  font-size: 1.1em;
+}
+
+.message :deep(.katex-display) {
+  margin: var(--space-4) 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: var(--space-2) 0;
+}
+
+.message :deep(.katex-display > .katex) {
+  text-align: center;
+}
+
+.message.user :deep(.katex) {
+  color: inherit;
+}
+
+/* 公式错误样式 */
+.message :deep(.katex-error) {
+  color: var(--color-danger);
+  background: var(--color-danger-light);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
 }
 
 @media (max-width: 768px) {

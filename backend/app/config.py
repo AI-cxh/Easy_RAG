@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from typing import Optional
+from typing import Optional, List, Dict
 
 
 class Settings(BaseSettings):
@@ -36,6 +36,27 @@ class Settings(BaseSettings):
     # 文本分块配置
     CHUNK_SIZE: int = 1000
     CHUNK_OVERLAP: int = 200
+
+    # Agent配置
+    AGENT_MAX_ITERATIONS: int = 10  # Agent最大迭代次数
+    AGENT_VERBOSE: bool = False     # 是否输出详细日志
+
+    # MCP服务器配置
+    # 示例配置格式:
+    # MCP_SERVERS = [
+    #     {
+    #         "name": "filesystem",
+    #         "transport": "stdio",
+    #         "command": "python",
+    #         "args": ["/path/to/filesystem_server.py"]
+    #     },
+    #     {
+    #         "name": "database",
+    #         "transport": "http",
+    #         "url": "http://localhost:8001/mcp"
+    #     }
+    # ]
+    MCP_SERVERS: List[Dict] = []  # MCP服务器配置列表
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

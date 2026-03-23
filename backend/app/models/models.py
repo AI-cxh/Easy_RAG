@@ -12,6 +12,9 @@ class KnowledgeBase(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False, unique=True)
     description = Column(Text)
+    # 分块设置
+    chunk_size = Column(Integer, default=1000)
+    chunk_overlap = Column(Integer, default=200)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # 关系
@@ -54,6 +57,8 @@ class ChatMessage(Base):
     session_id = Column(Integer, ForeignKey("chat_sessions.id", ondelete="CASCADE"), nullable=False)
     role = Column(String(50), nullable=False)  # 'user' or 'assistant'
     content = Column(Text, nullable=False)
+    # 存储额外数据：thinking_steps, sources, search_results
+    extra_data = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # 关系

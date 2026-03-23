@@ -7,10 +7,25 @@ import json
 
 from app.models.database import get_db
 from app.models.models import ChatSession, ChatMessage
-from app.models.schemas import ChatRequest, ChatResponse, ChatSessionResponse, ChatSessionListResponse, SessionRenameRequest
+from app.models.schemas import (
+    ChatRequest, ChatResponse, ChatSessionResponse, ChatSessionListResponse,
+    SessionRenameRequest, AgentChatRequest, AgentStepResponse
+)
 from app.services.rag import rag_service
 from app.services.search import get_search_service
 from app.services.embedding import embedding_service
+from app.services.agent import agent_service
+
+
+def parse_message_metadata(msg: ChatMessage) -> dict:
+    """解析消息的extra_data字段"""
+    extra_data = {}
+    if msg.extra_data:
+        try:
+            extra_data = json.loads(msg.extra_data)
+        except:
+            pass
+    return extra_data
 
 
 router = APIRouter()
@@ -43,7 +58,19 @@ async def stream_response(
 
     # 保存完整的助手消息到数据库
     try:
-        assistant_msg = ChatMessage(session_id=session_id, role="assistant", content=full_response)
+        # 构建extra_data
+        extra_data = {}
+        if sources:
+            extra_data["sources"] = sources
+        if search_results:
+            extra_data["search_results"] = search_results
+
+        assistant_msg = ChatMessage(
+            session_id=session_id,
+            role="assistant",
+            content=full_response,
+            extra_data=json.dumps(extra_data, ensure_ascii=False) if extra_data else None
+        )
         db.add(assistant_msg)
         db.commit()
     except Exception as e:
@@ -169,7 +196,8 @@ async def get_session(session_id: int, db: Session = Depends(get_db)):
                 "session_id": msg.session_id,
                 "role": msg.role,
                 "content": msg.content,
-                "created_at": msg.created_at
+                "created_at": msg.created_at,
+                **parse_message_metadata(msg)  # 展开 metadata 中的字段
             }
             for msg in messages
         ]
@@ -197,3 +225,148 @@ async def rename_session(session_id: int, request: SessionRenameRequest, db: Ses
     session.title = request.title
     db.commit()
     return {"message": "会话已重命名", "id": session_id, "title": request.title}
+
+
+async def stream_agent_response(
+    session_id: int,
+    agent_generator: AsyncGenerator[dict, None],
+    db: Session
+) -> AsyncGenerator[str, None]:
+    """流式发送Agent响应"""
+    full_response = ""
+    thinking_steps = []
+    search_results = None
+    sources = None
+
+    try:
+        async for event in agent_generator:
+            event_type = event.get("type")
+
+            if event_type == "answer":
+                # 最终回答内容
+                content = event.get("content", "")
+                full_response += content
+                data = {
+                    "type": "chunk",
+                    "content": content
+                }
+                yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+            elif event_type in ["thought", "tool_call", "tool_result"]:
+                # 思考过程
+                thinking_steps.append(event)
+                data = {
+                    "type": event_type,
+                    "content": event.get("content", ""),
+                    "tool_name": event.get("tool_name"),
+                    "tool_args": event.get("tool_args")
+                }
+                yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+            elif event_type == "search_data":
+                # 搜索结果数据
+                search_results = event.get("search_results")
+                sources = event.get("sources")
+
+            elif event_type == "error":
+                # 错误
+                error_data = {"type": "error", "message": event.get("content", "未知错误")}
+                yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
+                return
+
+    except Exception as e:
+        error_data = {"type": "error", "message": str(e)}
+        yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
+        return
+
+    # 保存完整的助手消息到数据库
+    try:
+        # 构建extra_data，保存thinking_steps和搜索结果
+        extra_data = {}
+        if thinking_steps:
+            extra_data["thinking_steps"] = thinking_steps
+        if search_results:
+            extra_data["search_results"] = search_results
+        if sources:
+            extra_data["sources"] = sources
+
+        assistant_msg = ChatMessage(
+            session_id=session_id,
+            role="assistant",
+            content=full_response,
+            extra_data=json.dumps(extra_data, ensure_ascii=False) if extra_data else None
+        )
+        db.add(assistant_msg)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"Failed to save assistant message: {e}")
+
+    # 发送完成信号
+    end_data = {
+        "type": "end",
+        "session_id": session_id,
+        "thinking_steps": thinking_steps if thinking_steps else None,
+        "search_results": search_results,
+        "sources": sources
+    }
+    yield f"data: {json.dumps(end_data, ensure_ascii=False)}\n\n"
+
+
+@router.post("/chat/agent")
+async def chat_with_agent(request: AgentChatRequest, db: Session = Depends(get_db)):
+    """
+    Agent驱动的聊天接口
+
+    - Agent自主决定是否检索
+    - 支持多轮检索和推理
+    - 流式返回思考过程
+    - kb_ids可选：若提供则限定范围，否则Agent自主选择
+    """
+    try:
+        # 获取或创建会话
+        if request.session_id:
+            session = db.query(ChatSession).filter(ChatSession.id == request.session_id).first()
+            if not session:
+                raise HTTPException(status_code=404, detail="会话不存在")
+        else:
+            session = ChatSession(title=request.message[:30] + ("..." if len(request.message) > 30 else ""))
+            db.add(session)
+            db.commit()
+            db.refresh(session)
+
+        # 保存用户消息
+        user_msg = ChatMessage(session_id=session.id, role="user", content=request.message)
+        db.add(user_msg)
+        db.commit()
+
+        # 获取聊天历史
+        history = db.query(ChatMessage).filter(
+            ChatMessage.session_id == session.id,
+            ChatMessage.created_at < user_msg.created_at
+        ).order_by(ChatMessage.created_at).all()
+        chat_history = [{"role": msg.role, "content": msg.content} for msg in history]
+
+        # 执行Agent
+        agent_generator = agent_service.run(
+            query=request.message,
+            chat_history=chat_history,
+            kb_ids=request.kb_ids,
+            use_web_search=request.use_web_search
+        )
+
+        # 返回 SSE 响应
+        return StreamingResponse(
+            stream_agent_response(
+                session_id=session.id,
+                agent_generator=agent_generator,
+                db=db
+            ),
+            media_type="text/event-stream"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Agent聊天处理失败: {str(e)}")

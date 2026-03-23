@@ -1,7 +1,7 @@
 """设置API路由"""
 from fastapi import APIRouter
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List, Dict
 import json
 import os
 
@@ -18,10 +18,20 @@ class ModelSettings(BaseModel):
     apiUrl: str = ""
 
 
+class MCPServerConfig(BaseModel):
+    """MCP服务器配置"""
+    name: str = ""
+    transport: str = "stdio"  # stdio | http | streamable-http
+    command: Optional[str] = None
+    args: Optional[List[str]] = None
+    url: Optional[str] = None
+
+
 class SettingsData(BaseModel):
     llm: ModelSettings = ModelSettings()
     embedding: ModelSettings = ModelSettings()
     rerank: ModelSettings = ModelSettings()
+    mcpServers: List[MCPServerConfig] = []
 
 
 def load_settings_from_file() -> SettingsData:
@@ -50,7 +60,8 @@ def load_settings_from_file() -> SettingsData:
             model=settings.RERANK_MODEL,
             apiKey=settings.RERANK_API_KEY or "",
             apiUrl=settings.RERANK_API_BASE or ""
-        )
+        ),
+        mcpServers=[]
     )
 
 

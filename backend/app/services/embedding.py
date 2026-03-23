@@ -26,13 +26,34 @@ class EmbeddingService:
         )
         self._fallback_enabled = False  # 标记是否已启用回退
 
-        self.text_splitter = RecursiveCharacterTextSplitter(
+        # 默认分块器（使用系统默认值）
+        self.default_text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=settings.CHUNK_SIZE,
             chunk_overlap=settings.CHUNK_OVERLAP,
             length_function=len
         )
         # 初始化ChromaDB客户端
         self.chroma_client = chromadb.PersistentClient(path=settings.CHROMA_DB_PATH)
+
+    def get_text_splitter(self, chunk_size: Optional[int] = None, chunk_overlap: Optional[int] = None) -> RecursiveCharacterTextSplitter:
+        """
+        获取文本分块器
+
+        Args:
+            chunk_size: 分块大小，None则使用默认值
+            chunk_overlap: 分块重叠，None则使用默认值
+
+        Returns:
+            文本分块器实例
+        """
+        if chunk_size is None and chunk_overlap is None:
+            return self.default_text_splitter
+
+        return RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size or settings.CHUNK_SIZE,
+            chunk_overlap=chunk_overlap or settings.CHUNK_OVERLAP,
+            length_function=len
+        )
 
     def get_or_create_collection(self, kb_id: int):
         """获取或创建知识库对应的ChromaDB集合"""
@@ -69,9 +90,20 @@ class EmbeddingService:
                 print(f"HuggingFace 嵌入服务也失败: {e2}")
                 raise RuntimeError("无法初始化嵌入服务，请检查 API 配置或安装 sentence-transformers")
 
-    def split_text(self, text: str) -> List[str]:
-        """将文本分割成块"""
-        return self.text_splitter.split_text(text)
+    def split_text(self, text: str, chunk_size: Optional[int] = None, chunk_overlap: Optional[int] = None) -> List[str]:
+        """
+        将文本分割成块
+
+        Args:
+            text: 要分割的文本
+            chunk_size: 分块大小，None则使用默认值
+            chunk_overlap: 分块重叠，None则使用默认值
+
+        Returns:
+            文本块列表
+        """
+        splitter = self.get_text_splitter(chunk_size, chunk_overlap)
+        return splitter.split_text(text)
 
     def embed_and_store(self, kb_id: int, chunks: List[str], metadatas: List[dict]) -> int:
         """

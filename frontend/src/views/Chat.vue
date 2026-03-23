@@ -180,14 +180,34 @@
               </div>
               <div class="message-content">
                 <div class="message-wrapper">
+                  <!-- Agent思考过程 -->
+                  <AgentThinking v-if="msg.thinkingSteps && msg.thinkingSteps.length > 0" :steps="msg.thinkingSteps" />
                   <div class="message-text markdown" v-html="renderMarkdown(msg.content)"></div>
                   <span v-if="!msg.content && isSending && index === messages.length - 1" class="typing-indicator">
                     <span></span><span></span><span></span>
                   </span>
-                  <!-- 来源信息 -->
+                  <!-- 知识库来源信息 -->
                   <div v-if="msg.sources?.length" class="message-sources">
                     <span class="sources-label">参考来源:</span>
                     <span v-for="(source, i) in msg.sources" :key="i" class="source-tag">{{ source }}</span>
+                  </div>
+                  <!-- 联网搜索来源 -->
+                  <div v-if="msg.search_results?.length" class="message-sources web-sources">
+                    <span class="sources-label">联网搜索来源:</span>
+                    <a
+                      v-for="(result, i) in msg.search_results"
+                      :key="i"
+                      :href="result.url"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="source-link"
+                      :title="result.snippet"
+                    >
+                      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" class="link-icon">
+                        <path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/>
+                      </svg>
+                      {{ result.title || result.url }}
+                    </a>
                   </div>
                   <!-- 助手消息操作按钮 -->
                   <div v-if="msg.content && !isSending" class="message-actions">
@@ -226,6 +246,18 @@
             <!-- 底部工具栏 -->
             <div class="input-toolbar">
               <div class="toolbar-left">
+                <!-- Agent模式切换 -->
+                <button
+                  class="toolbar-btn agent-mode-btn"
+                  :class="{ active: useAgentMode }"
+                  @click="useAgentMode = !useAgentMode"
+                  title="Agent模式"
+                >
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                  </svg>
+                  <span>{{ useAgentMode ? 'Agent' : 'RAG' }}</span>
+                </button>
                 <!-- 知识库选择 -->
                 <div class="kb-dropdown">
                   <button
@@ -338,8 +370,15 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue'
-import { chatAPI, knowledgeAPI } from '../api/client'
+import { chatAPI, knowledgeAPI, agentAPI } from '../api/client'
+import type { ThinkingStep } from '../api/client'
 import { marked } from 'marked'
+import hljs from 'highlight.js'
+import DOMPurify from 'dompurify'
+import katex from 'katex'
+import AgentThinking from '../components/AgentThinking.vue'
+import 'highlight.js/styles/github-dark.css'
+import 'katex/dist/katex.min.css'
 
 // 类型定义
 interface Message {
@@ -347,6 +386,7 @@ interface Message {
   content: string
   sources?: string[]
   search_results?: Array<{ title: string; url: string; snippet?: string }>
+  thinkingSteps?: ThinkingStep[]
 }
 
 interface ChatSession {
@@ -369,6 +409,7 @@ const inputRef = ref<HTMLTextAreaElement>()
 
 const selectedKbIds = ref<number[]>([])
 const useWebSearch = ref(false)
+const useAgentMode = ref(true)  // 默认使用Agent模式
 const knowledgeBases = ref<any[]>([])
 const inputMessage = ref('')
 const showKbDropdown = ref(false)
@@ -391,10 +432,91 @@ const lastUserMessageIndex = computed(() => {
   return -1
 })
 
+// 配置 marked
+marked.setOptions({
+  highlight: (code: string, lang: string) => {
+    const language = hljs.getLanguage(lang) ? lang : 'plaintext'
+    return hljs.highlight(code, { language }).value
+  },
+  breaks: true,
+  gfm: true
+})
+
+// DOMPurify 允许的标签
+const ALLOWED_TAGS = [
+  'a', 'b', 'i', 'strong', 'em', 'u', 's', 'br', 'p', 'div', 'span',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'ul', 'ol', 'li', 'dl', 'dt', 'dd',
+  'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'caption', 'colgroup', 'col',
+  'pre', 'code', 'blockquote',
+  'hr', 'img',
+  'math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'mfrac', 'msup', 'msub',
+  'msubsup', 'munder', 'mover', 'munderover', 'mroot', 'msqrt', 'mtable',
+  'mtr', 'mtd', 'mtext', 'mspace', 'mfenced', 'menclose', 'mpadded',
+  'mphantom', 'mglyph', 'maction', 'merror', 'annotation', 'annotation-xml'
+]
+
+const ALLOWED_ATTR = [
+  'href', 'title', 'alt', 'src', 'width', 'height',
+  'class', 'id', 'target', 'rel',
+  'colspan', 'rowspan', 'align', 'valign',
+  'xmlns', 'display', 'scriptlevel', 'mathvariant', 'mathsize',
+  'mathcolor', 'mathbackground', 'stretchy', 'symmetric', 'maxsize',
+  'minsize', 'largeop', 'movablelimits', 'accent', 'accentunder',
+  'delimiter', 'separator', 'notation', 'linethickness', 'spacing',
+  'columnalign', 'rowalign', 'columnspacing', 'rowspacing', 'frame',
+  'framespacing', 'equalcolumns', 'equalrows', 'side', 'width',
+  'height', 'depth', 'lspace', 'rspace', 'operator', 'form'
+]
+
+// 配置 DOMPurify 钩子
+DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  if (node.tagName === 'A') {
+    const href = node.getAttribute('href')
+    if (href && (href.startsWith('http://') || href.startsWith('https://'))) {
+      node.setAttribute('target', '_blank')
+      node.setAttribute('rel', 'noopener noreferrer')
+    }
+  }
+})
+
+// 渲染数学公式
+const renderMath = (text: string): string => {
+  // 块级公式 $$...$$
+  text = text.replace(/\$\$([\s\S]+?)\$\$/g, (_, math) => {
+    try {
+      return katex.renderToString(math.trim(), {
+        displayMode: true,
+        throwOnError: false,
+        output: 'html'
+      })
+    } catch (e) {
+      return `<span class="katex-error">${math}</span>`
+    }
+  })
+
+  // 行内公式 $...$
+  text = text.replace(/(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)/g, (_, math) => {
+    try {
+      return katex.renderToString(math.trim(), {
+        displayMode: false,
+        throwOnError: false,
+        output: 'html'
+      })
+    } catch (e) {
+      return `<span class="katex-error">${math}</span>`
+    }
+  })
+
+  return text
+}
+
 // Markdown 渲染
 const renderMarkdown = (content: string) => {
   if (!content) return ''
-  return marked(content)
+  const withMath = renderMath(content)
+  const rawHtml = marked.parse(withMath) as string
+  return DOMPurify.sanitize(rawHtml, { ALLOWED_TAGS, ALLOWED_ATTR })
 }
 
 // 时间格式化
@@ -428,26 +550,22 @@ const autoResize = () => {
   }
 }
 
-// 本地存储
+// 本地存储 - 只保存设置，不保存消息状态，确保每次打开都显示欢迎页面
 const loadSavedState = () => {
   const saved = localStorage.getItem('chatState')
   if (saved) {
     const state = JSON.parse(saved)
-    messages.value = state.messages || []
-    currentSessionId.value = state.sessionId
     selectedKbIds.value = state.selectedKbIds || []
     useWebSearch.value = state.useWebSearch || false
-    hasUserInteracted.value = state.hasUserInteracted || false
+    // 不恢复 messages 和 hasUserInteracted，每次打开都是新状态
   }
 }
 
 const saveState = () => {
   localStorage.setItem('chatState', JSON.stringify({
-    messages: messages.value,
-    sessionId: currentSessionId.value,
     selectedKbIds: selectedKbIds.value,
-    useWebSearch: useWebSearch.value,
-    hasUserInteracted: hasUserInteracted.value
+    useWebSearch: useWebSearch.value
+    // 不保存 messages 和 hasUserInteracted
   }))
 }
 
@@ -482,7 +600,12 @@ const loadSession = async (sessionId: number) => {
   try {
     const result = await chatAPI.getSession(sessionId)
     currentSessionId.value = sessionId
-    messages.value = result.messages || []
+    // 转换字段名：thinking_steps -> thinkingSteps
+    messages.value = (result.messages || []).map((msg: any) => ({
+      ...msg,
+      thinkingSteps: msg.thinking_steps || msg.thinkingSteps,
+      searchResults: msg.search_results || msg.searchResults
+    }))
     hasUserInteracted.value = messages.value.length > 0
     saveState()
   } catch (error) {
@@ -590,33 +713,100 @@ const handleSend = async () => {
       role: 'assistant',
       content: '',
       sources: undefined,
-      search_results: undefined
+      search_results: undefined,
+      thinkingSteps: undefined
     })
     scrollToBottom()
 
-    const result = await chatAPI.sendMessageStream(
-      {
-        message,
-        session_id: currentSessionId.value,
-        kb_ids: selectedKbIds.value,
-        use_web_search: useWebSearch.value
-      },
-      (chunk) => {
-        if (chunk.type === 'chunk' && chunk.content) {
-          messages.value[assistantIndex].content += chunk.content
-          scrollToBottom()
-        } else if (chunk.type === 'error') {
-          console.error('Stream error:', chunk.message)
-          messages.value[assistantIndex].content = '抱歉，发生了错误，请稍后重试。'
+    if (useAgentMode.value) {
+      // Agent模式
+      const result = await agentAPI.sendMessageStream(
+        {
+          message,
+          session_id: currentSessionId.value,
+          kb_ids: selectedKbIds.value.length > 0 ? selectedKbIds.value : undefined,
+          use_web_search: useWebSearch.value,
+          show_thinking: true
+        },
+        (chunk) => {
+          if (chunk.type === 'chunk' && chunk.content) {
+            messages.value[assistantIndex].content += chunk.content
+            scrollToBottom()
+          } else if (chunk.type === 'thought') {
+            // 思考过程
+            if (!messages.value[assistantIndex].thinkingSteps) {
+              messages.value[assistantIndex].thinkingSteps = []
+            }
+            messages.value[assistantIndex].thinkingSteps!.push({
+              type: 'thought',
+              content: chunk.content || ''
+            })
+            scrollToBottom()
+          } else if (chunk.type === 'tool_call') {
+            // 工具调用
+            if (!messages.value[assistantIndex].thinkingSteps) {
+              messages.value[assistantIndex].thinkingSteps = []
+            }
+            messages.value[assistantIndex].thinkingSteps!.push({
+              type: 'tool_call',
+              content: chunk.content || '',
+              tool_name: chunk.tool_name,
+              tool_args: chunk.tool_args
+            })
+            scrollToBottom()
+          } else if (chunk.type === 'tool_result') {
+            // 工具结果
+            if (!messages.value[assistantIndex].thinkingSteps) {
+              messages.value[assistantIndex].thinkingSteps = []
+            }
+            messages.value[assistantIndex].thinkingSteps!.push({
+              type: 'tool_result',
+              content: chunk.content || '',
+              tool_name: chunk.tool_name
+            })
+            scrollToBottom()
+          } else if (chunk.type === 'error') {
+            console.error('Stream error:', chunk.message)
+            messages.value[assistantIndex].content = '抱歉，发生了错误，请稍后重试。'
+          }
         }
+      )
+
+      currentSessionId.value = result.sessionId
+      messages.value[assistantIndex].thinkingSteps = result.thinkingSteps
+      // 保存搜索结果和来源
+      if (result.searchResults && result.searchResults.length > 0) {
+        messages.value[assistantIndex].search_results = result.searchResults
       }
-    )
+      if (result.sources && result.sources.length > 0) {
+        messages.value[assistantIndex].sources = result.sources
+      }
+    } else {
+      // 传统RAG模式
+      const result = await chatAPI.sendMessageStream(
+        {
+          message,
+          session_id: currentSessionId.value,
+          kb_ids: selectedKbIds.value,
+          use_web_search: useWebSearch.value
+        },
+        (chunk) => {
+          if (chunk.type === 'chunk' && chunk.content) {
+            messages.value[assistantIndex].content += chunk.content
+            scrollToBottom()
+          } else if (chunk.type === 'error') {
+            console.error('Stream error:', chunk.message)
+            messages.value[assistantIndex].content = '抱歉，发生了错误，请稍后重试。'
+          }
+        }
+      )
 
-    currentSessionId.value = result.sessionId
-    messages.value[assistantIndex].sources = result.sources
-    messages.value[assistantIndex].search_results = result.searchResults
+      currentSessionId.value = result.sessionId
+      messages.value[assistantIndex].sources = result.sources
+      messages.value[assistantIndex].search_results = result.searchResults
+    }
+
     saveState()
-
     await loadSessions()
   } catch (error) {
     console.error('Chat error:', error)
@@ -705,33 +895,97 @@ const saveMessageEdit = async (index: number) => {
       role: 'assistant',
       content: '',
       sources: undefined,
-      search_results: undefined
+      search_results: undefined,
+      thinkingSteps: undefined
     })
     scrollToBottom()
 
-    const result = await chatAPI.sendMessageStream(
-      {
-        message: newContent,
-        session_id: currentSessionId.value,
-        kb_ids: selectedKbIds.value,
-        use_web_search: useWebSearch.value
-      },
-      (chunk) => {
-        if (chunk.type === 'chunk' && chunk.content) {
-          messages.value[assistantIndex].content += chunk.content
-          scrollToBottom()
-        } else if (chunk.type === 'error') {
-          console.error('Stream error:', chunk.message)
-          messages.value[assistantIndex].content = '抱歉，发生了错误，请稍后重试。'
+    if (useAgentMode.value) {
+      // Agent模式
+      const result = await agentAPI.sendMessageStream(
+        {
+          message: newContent,
+          session_id: currentSessionId.value,
+          kb_ids: selectedKbIds.value.length > 0 ? selectedKbIds.value : undefined,
+          use_web_search: useWebSearch.value,
+          show_thinking: true
+        },
+        (chunk) => {
+          if (chunk.type === 'chunk' && chunk.content) {
+            messages.value[assistantIndex].content += chunk.content
+            scrollToBottom()
+          } else if (chunk.type === 'thought') {
+            if (!messages.value[assistantIndex].thinkingSteps) {
+              messages.value[assistantIndex].thinkingSteps = []
+            }
+            messages.value[assistantIndex].thinkingSteps!.push({
+              type: 'thought',
+              content: chunk.content || ''
+            })
+            scrollToBottom()
+          } else if (chunk.type === 'tool_call') {
+            if (!messages.value[assistantIndex].thinkingSteps) {
+              messages.value[assistantIndex].thinkingSteps = []
+            }
+            messages.value[assistantIndex].thinkingSteps!.push({
+              type: 'tool_call',
+              content: chunk.content || '',
+              tool_name: chunk.tool_name,
+              tool_args: chunk.tool_args
+            })
+            scrollToBottom()
+          } else if (chunk.type === 'tool_result') {
+            if (!messages.value[assistantIndex].thinkingSteps) {
+              messages.value[assistantIndex].thinkingSteps = []
+            }
+            messages.value[assistantIndex].thinkingSteps!.push({
+              type: 'tool_result',
+              content: chunk.content || '',
+              tool_name: chunk.tool_name
+            })
+            scrollToBottom()
+          } else if (chunk.type === 'error') {
+            console.error('Stream error:', chunk.message)
+            messages.value[assistantIndex].content = '抱歉，发生了错误，请稍后重试。'
+          }
         }
+      )
+
+      currentSessionId.value = result.sessionId
+      messages.value[assistantIndex].thinkingSteps = result.thinkingSteps
+      // 保存搜索结果和来源
+      if (result.searchResults && result.searchResults.length > 0) {
+        messages.value[assistantIndex].search_results = result.searchResults
       }
-    )
+      if (result.sources && result.sources.length > 0) {
+        messages.value[assistantIndex].sources = result.sources
+      }
+    } else {
+      // 传统RAG模式
+      const result = await chatAPI.sendMessageStream(
+        {
+          message: newContent,
+          session_id: currentSessionId.value,
+          kb_ids: selectedKbIds.value,
+          use_web_search: useWebSearch.value
+        },
+        (chunk) => {
+          if (chunk.type === 'chunk' && chunk.content) {
+            messages.value[assistantIndex].content += chunk.content
+            scrollToBottom()
+          } else if (chunk.type === 'error') {
+            console.error('Stream error:', chunk.message)
+            messages.value[assistantIndex].content = '抱歉，发生了错误，请稍后重试。'
+          }
+        }
+      )
 
-    currentSessionId.value = result.sessionId
-    messages.value[assistantIndex].sources = result.sources
-    messages.value[assistantIndex].search_results = result.searchResults
+      currentSessionId.value = result.sessionId
+      messages.value[assistantIndex].sources = result.sources
+      messages.value[assistantIndex].search_results = result.searchResults
+    }
+
     saveState()
-
     await loadSessions()
   } catch (error) {
     console.error('Chat error:', error)
@@ -765,33 +1019,97 @@ const regenerateResponse = async (assistantIndex: number) => {
       role: 'assistant',
       content: '',
       sources: undefined,
-      search_results: undefined
+      search_results: undefined,
+      thinkingSteps: undefined
     })
     scrollToBottom()
 
-    const result = await chatAPI.sendMessageStream(
-      {
-        message: userMessage,
-        session_id: currentSessionId.value,
-        kb_ids: selectedKbIds.value,
-        use_web_search: useWebSearch.value
-      },
-      (chunk) => {
-        if (chunk.type === 'chunk' && chunk.content) {
-          messages.value[newAssistantIndex].content += chunk.content
-          scrollToBottom()
-        } else if (chunk.type === 'error') {
-          console.error('Stream error:', chunk.message)
-          messages.value[newAssistantIndex].content = '抱歉，发生了错误，请稍后重试。'
+    if (useAgentMode.value) {
+      // Agent模式
+      const result = await agentAPI.sendMessageStream(
+        {
+          message: userMessage,
+          session_id: currentSessionId.value,
+          kb_ids: selectedKbIds.value.length > 0 ? selectedKbIds.value : undefined,
+          use_web_search: useWebSearch.value,
+          show_thinking: true
+        },
+        (chunk) => {
+          if (chunk.type === 'chunk' && chunk.content) {
+            messages.value[newAssistantIndex].content += chunk.content
+            scrollToBottom()
+          } else if (chunk.type === 'thought') {
+            if (!messages.value[newAssistantIndex].thinkingSteps) {
+              messages.value[newAssistantIndex].thinkingSteps = []
+            }
+            messages.value[newAssistantIndex].thinkingSteps!.push({
+              type: 'thought',
+              content: chunk.content || ''
+            })
+            scrollToBottom()
+          } else if (chunk.type === 'tool_call') {
+            if (!messages.value[newAssistantIndex].thinkingSteps) {
+              messages.value[newAssistantIndex].thinkingSteps = []
+            }
+            messages.value[newAssistantIndex].thinkingSteps!.push({
+              type: 'tool_call',
+              content: chunk.content || '',
+              tool_name: chunk.tool_name,
+              tool_args: chunk.tool_args
+            })
+            scrollToBottom()
+          } else if (chunk.type === 'tool_result') {
+            if (!messages.value[newAssistantIndex].thinkingSteps) {
+              messages.value[newAssistantIndex].thinkingSteps = []
+            }
+            messages.value[newAssistantIndex].thinkingSteps!.push({
+              type: 'tool_result',
+              content: chunk.content || '',
+              tool_name: chunk.tool_name
+            })
+            scrollToBottom()
+          } else if (chunk.type === 'error') {
+            console.error('Stream error:', chunk.message)
+            messages.value[newAssistantIndex].content = '抱歉，发生了错误，请稍后重试。'
+          }
         }
+      )
+
+      currentSessionId.value = result.sessionId
+      messages.value[newAssistantIndex].thinkingSteps = result.thinkingSteps
+      // 保存搜索结果和来源
+      if (result.searchResults && result.searchResults.length > 0) {
+        messages.value[newAssistantIndex].search_results = result.searchResults
       }
-    )
+      if (result.sources && result.sources.length > 0) {
+        messages.value[newAssistantIndex].sources = result.sources
+      }
+    } else {
+      // 传统RAG模式
+      const result = await chatAPI.sendMessageStream(
+        {
+          message: userMessage,
+          session_id: currentSessionId.value,
+          kb_ids: selectedKbIds.value,
+          use_web_search: useWebSearch.value
+        },
+        (chunk) => {
+          if (chunk.type === 'chunk' && chunk.content) {
+            messages.value[newAssistantIndex].content += chunk.content
+            scrollToBottom()
+          } else if (chunk.type === 'error') {
+            console.error('Stream error:', chunk.message)
+            messages.value[newAssistantIndex].content = '抱歉，发生了错误，请稍后重试。'
+          }
+        }
+      )
 
-    currentSessionId.value = result.sessionId
-    messages.value[newAssistantIndex].sources = result.sources
-    messages.value[newAssistantIndex].search_results = result.searchResults
+      currentSessionId.value = result.sessionId
+      messages.value[newAssistantIndex].sources = result.sources
+      messages.value[newAssistantIndex].search_results = result.searchResults
+    }
+
     saveState()
-
     await loadSessions()
   } catch (error) {
     console.error('Regenerate error:', error)
@@ -816,12 +1134,13 @@ onMounted(() => {
 .chat-layout {
   display: flex;
   height: 100vh;
+  height: 100dvh;
   background: var(--bg-primary);
 }
 
-/* 左侧固定导航栏 */
+/* 左侧固定导航栏 - 自适应宽度 */
 .nav-rail {
-  width: var(--nav-rail-width);
+  width: clamp(56px, 8vw, 72px);
   background: var(--bg-secondary);
   border-right: 1px solid var(--border-subtle);
   display: flex;
@@ -833,8 +1152,8 @@ onMounted(() => {
 }
 
 .nav-rail-btn {
-  width: 44px;
-  height: 44px;
+  width: clamp(36px, 5vw, 44px);
+  height: clamp(36px, 5vw, 44px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -878,16 +1197,16 @@ onMounted(() => {
 }
 
 .nav-rail-btn svg {
-  width: 22px;
-  height: 22px;
+  width: clamp(18px, 2.5vw, 22px);
+  height: clamp(18px, 2.5vw, 22px);
   fill: currentColor;
   position: relative;
   z-index: 1;
 }
 
-/* 侧边栏 */
+/* 侧边栏 - 自适应宽度 */
 .chat-sidebar {
-  width: var(--sidebar-width);
+  width: clamp(220px, 25vw, 300px);
   background: var(--bg-secondary);
   border-right: 1px solid var(--border-subtle);
   display: flex;
@@ -903,7 +1222,7 @@ onMounted(() => {
 }
 
 .sidebar-header {
-  padding: var(--space-5);
+  padding: clamp(var(--space-3), 2vw, var(--space-5));
 }
 
 .new-chat-btn {
@@ -1002,8 +1321,8 @@ onMounted(() => {
 }
 
 .chat-header {
-  height: var(--header-height);
-  padding: 0 var(--space-8);
+  height: clamp(48px, 6vh, 64px);
+  padding: 0 clamp(var(--space-4), 4vw, var(--space-8));
   display: flex;
   align-items: center;
   border-bottom: 1px solid var(--border-subtle);
@@ -1014,7 +1333,7 @@ onMounted(() => {
 
 .header-title {
   font-family: var(--font-display);
-  font-size: var(--text-xl);
+  font-size: clamp(var(--text-lg), 2vw, var(--text-xl));
   font-weight: var(--font-semibold);
   color: var(--text-primary);
   margin: 0;
@@ -1025,7 +1344,7 @@ onMounted(() => {
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-8);
+  padding: clamp(var(--space-4), 3vw, var(--space-8));
 }
 
 /* 欢迎屏幕 */
@@ -1036,12 +1355,12 @@ onMounted(() => {
   justify-content: center;
   height: 100%;
   text-align: center;
-  padding: var(--space-8);
+  padding: clamp(var(--space-4), 4vw, var(--space-8));
 }
 
 .welcome-title {
   font-family: var(--font-display);
-  font-size: var(--text-4xl);
+  font-size: clamp(var(--text-2xl), 5vw, var(--text-4xl));
   font-weight: var(--font-semibold);
   color: var(--text-primary);
   margin: 0 0 var(--space-3);
@@ -1049,16 +1368,18 @@ onMounted(() => {
 }
 
 .welcome-desc {
-  font-size: var(--text-base);
+  font-size: clamp(var(--text-sm), 1.5vw, var(--text-base));
   color: var(--text-secondary);
-  margin: 0 0 var(--space-10);
+  margin: 0 0 clamp(var(--space-6), 4vw, var(--space-10));
 }
 
 .welcome-tips {
   display: flex;
-  flex-direction: row;
-  gap: var(--space-4);
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: clamp(var(--space-2), 2vw, var(--space-4));
   max-width: 800px;
+  width: 100%;
 }
 
 .tip-item {
@@ -1066,12 +1387,14 @@ onMounted(() => {
   flex-direction: column;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-5);
+  padding: clamp(var(--space-3), 2vw, var(--space-5));
   background: var(--bg-elevated);
   border-radius: var(--radius-xl);
   border: 1px solid var(--border-subtle);
   text-align: center;
-  flex: 1;
+  flex: 1 1 200px;
+  min-width: 180px;
+  max-width: 280px;
   transition: all var(--duration-normal) var(--ease-soft);
 }
 
@@ -1081,8 +1404,8 @@ onMounted(() => {
 }
 
 .tip-icon {
-  width: 52px;
-  height: 52px;
+  width: clamp(40px, 5vw, 52px);
+  height: clamp(40px, 5vw, 52px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1092,8 +1415,8 @@ onMounted(() => {
 }
 
 .tip-icon svg {
-  width: 26px;
-  height: 26px;
+  width: clamp(20px, 2.5vw, 26px);
+  height: clamp(20px, 2.5vw, 26px);
   fill: var(--color-primary);
 }
 
@@ -1134,6 +1457,7 @@ onMounted(() => {
   max-width: 800px;
   margin: 0 auto;
   width: 100%;
+  padding: 0 var(--space-2);
 }
 
 .message {
@@ -1148,8 +1472,8 @@ onMounted(() => {
 }
 
 .message-avatar {
-  width: 36px;
-  height: 36px;
+  width: clamp(28px, 4vw, 36px);
+  height: clamp(28px, 4vw, 36px);
   border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
@@ -1169,8 +1493,8 @@ onMounted(() => {
 }
 
 .message.assistant .message-avatar svg {
-  width: 18px;
-  height: 18px;
+  width: clamp(14px, 2vw, 18px);
+  height: clamp(14px, 2vw, 18px);
   fill: var(--text-secondary);
 }
 
@@ -1200,7 +1524,7 @@ onMounted(() => {
   border-radius: var(--radius-xl);
   font-size: var(--text-sm);
   line-height: 1.7;
-  max-width: 600px;
+  max-width: min(600px, 85vw);
 }
 
 .message.user .message-text {
@@ -1237,6 +1561,42 @@ onMounted(() => {
   background: var(--bg-tertiary);
   border-radius: var(--radius-full);
   color: var(--text-secondary);
+}
+
+/* 联网搜索来源链接 */
+.web-sources {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.source-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-3);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-full);
+  color: var(--color-primary);
+  text-decoration: none;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: all var(--duration-fast);
+}
+
+.source-link:hover {
+  background: var(--color-primary);
+  color: white;
+}
+
+.source-link .link-icon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
 }
 
 /* 消息操作按钮 */
@@ -1370,7 +1730,7 @@ onMounted(() => {
 
 /* 输入区域 */
 .chat-input-area {
-  padding: var(--space-5) var(--space-8) var(--space-8);
+  padding: clamp(var(--space-3), 2vw, var(--space-5)) clamp(var(--space-4), 4vw, var(--space-8)) clamp(var(--space-4), 3vw, var(--space-8));
   background: linear-gradient(to top, var(--bg-primary) 70%, transparent);
 }
 
@@ -1385,7 +1745,7 @@ onMounted(() => {
   background: var(--bg-elevated);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-2xl);
-  padding: var(--space-3) var(--space-4);
+  padding: clamp(var(--space-2), 1.5vw, var(--space-3)) clamp(var(--space-3), 2vw, var(--space-4));
   transition: all var(--duration-normal) var(--ease-soft);
   box-shadow: var(--shadow-sm);
 }
@@ -1401,7 +1761,7 @@ onMounted(() => {
   border: none;
   padding: var(--space-2);
   resize: none;
-  font-size: var(--text-base);
+  font-size: clamp(var(--text-sm), 1.5vw, var(--text-base));
   min-height: 24px;
 }
 
@@ -1434,12 +1794,12 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
+  padding: clamp(var(--space-1), 1vw, var(--space-2)) clamp(var(--space-2), 1.5vw, var(--space-3));
   background: transparent;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
   color: var(--text-secondary);
-  font-size: var(--text-sm);
+  font-size: clamp(var(--text-xs), 1.2vw, var(--text-sm));
   cursor: pointer;
   transition: all var(--duration-fast) var(--ease-soft);
 }
@@ -1456,10 +1816,23 @@ onMounted(() => {
   color: var(--color-primary-dark);
 }
 
+.toolbar-btn.agent-mode-btn.active {
+  background: linear-gradient(135deg, #e0e7ff 0%, #f0f4ff 100%);
+  border-color: #6366f1;
+  color: #4f46e5;
+}
+
 .toolbar-btn svg {
-  width: 18px;
-  height: 18px;
+  width: clamp(14px, 2vw, 18px);
+  height: clamp(14px, 2vw, 18px);
   fill: currentColor;
+  flex-shrink: 0;
+}
+
+.toolbar-btn span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .dropdown-arrow {
@@ -1570,8 +1943,8 @@ onMounted(() => {
 }
 
 .send-btn {
-  width: 40px;
-  height: 40px;
+  width: clamp(32px, 5vw, 40px);
+  height: clamp(32px, 5vw, 40px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1582,6 +1955,7 @@ onMounted(() => {
   cursor: pointer;
   transition: all var(--duration-normal) var(--ease-soft);
   box-shadow: 0 2px 8px rgba(196, 125, 94, 0.25);
+  flex-shrink: 0;
 }
 
 .send-btn:hover:not(:disabled) {
@@ -1599,40 +1973,27 @@ onMounted(() => {
 }
 
 .send-btn svg {
-  width: 18px;
-  height: 18px;
+  width: clamp(14px, 2vw, 18px);
+  height: clamp(14px, 2vw, 18px);
   fill: currentColor;
 }
 
-/* 移动端 */
+/* 移动端侧边栏遮罩 - 默认隐藏 */
 .sidebar-overlay {
   display: none;
 }
 
+/* 移动端适配 - 仅保留必要的覆盖样式 */
 @media (max-width: 768px) {
-  .nav-rail {
-    width: 56px;
-  }
-
-  .nav-rail-btn {
-    width: 40px;
-    height: 40px;
-  }
-
-  .nav-rail-btn svg {
-    width: 20px;
-    height: 20px;
-  }
-
   .chat-sidebar {
     position: fixed;
-    left: 56px;
+    left: clamp(56px, 8vw, 72px);
     top: 0;
     bottom: 0;
     z-index: var(--z-modal);
     transform: translateX(-100%);
     transition: transform var(--duration-normal) var(--ease-spring);
-    width: 280px;
+    width: clamp(220px, 70vw, 280px);
     border-right: 1px solid var(--border-subtle);
   }
 
@@ -1642,7 +2003,7 @@ onMounted(() => {
 
   /* 移动端忽略折叠状态 */
   .chat-sidebar.collapsed {
-    width: 280px;
+    width: clamp(220px, 70vw, 280px);
     border-right: 1px solid var(--border-subtle);
   }
 
@@ -1650,43 +2011,21 @@ onMounted(() => {
     display: block;
     position: fixed;
     inset: 0;
-    left: 56px;
+    left: clamp(56px, 8vw, 72px);
     background: rgba(61, 54, 50, 0.3);
     backdrop-filter: blur(4px);
     z-index: calc(var(--z-modal) - 1);
   }
 
-  .chat-messages {
-    padding: var(--space-5);
-  }
-
-  .chat-input-area {
-    padding: var(--space-4) var(--space-5) var(--space-5);
-  }
-
-  .welcome-title {
-    font-size: var(--text-3xl);
-  }
-
   .welcome-tips {
     flex-direction: column;
-    max-width: 280px;
+    align-items: center;
   }
 
   .tip-item {
     flex-direction: row;
     text-align: left;
-    padding: var(--space-4);
-  }
-
-  .tip-icon {
-    width: 44px;
-    height: 44px;
-  }
-
-  .tip-icon svg {
-    width: 22px;
-    height: 22px;
+    max-width: 100%;
   }
 
   .toolbar-btn span {
@@ -1697,14 +2036,11 @@ onMounted(() => {
     left: auto;
     right: 0;
     min-width: 180px;
+    max-width: calc(100vw - 32px);
   }
 
   .message-actions {
     opacity: 1;
-  }
-
-  .message-text {
-    max-width: calc(100vw - 140px);
   }
 }
 
@@ -1743,5 +2079,77 @@ onMounted(() => {
 .toast-leave-to {
   opacity: 0;
   transform: translateX(-50%) translateY(20px);
+}
+
+/* Markdown 表格样式 */
+.message-text :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--space-4) 0;
+  font-size: var(--text-sm);
+  overflow-x: auto;
+  display: block;
+}
+
+.message-text :deep(thead) {
+  background: var(--bg-tertiary);
+}
+
+.message-text :deep(th) {
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  font-weight: var(--font-semibold);
+  border-bottom: 2px solid var(--border-default);
+}
+
+.message-text :deep(td) {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.message-text :deep(tbody tr:hover) {
+  background: var(--bg-hover);
+}
+
+.message.user .message-text :deep(table) {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.message.user .message-text :deep(thead) {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.message.user .message-text :deep(th),
+.message.user .message-text :deep(td) {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* KaTeX 数学公式样式 */
+.message-text :deep(.katex) {
+  font-size: 1.1em;
+}
+
+.message-text :deep(.katex-display) {
+  margin: var(--space-4) 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: var(--space-2) 0;
+}
+
+.message-text :deep(.katex-display > .katex) {
+  text-align: center;
+}
+
+.message.user .message-text :deep(.katex) {
+  color: inherit;
+}
+
+.message-text :deep(.katex-error) {
+  color: var(--color-danger);
+  background: var(--color-danger-light);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
 }
 </style>
