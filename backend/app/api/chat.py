@@ -104,7 +104,10 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
             if not session:
                 raise HTTPException(status_code=404, detail="会话不存在")
         else:
-            session = ChatSession(title=request.message[:30] + ("..." if len(request.message) > 30 else ""))
+            session = ChatSession(
+                title=request.message[:30] + ("..." if len(request.message) > 30 else ""),
+                session_type=request.session_type
+            )
             db.add(session)
             db.commit()
             db.refresh(session)
@@ -167,9 +170,12 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/chat/sessions", response_model=ChatSessionListResponse)
-async def get_sessions(db: Session = Depends(get_db)):
-    """获取所有聊天会话"""
-    sessions = db.query(ChatSession).order_by(ChatSession.created_at.desc()).all()
+async def get_sessions(session_type: str = None, db: Session = Depends(get_db)):
+    """获取所有聊天会话，可选按类型过滤"""
+    query = db.query(ChatSession)
+    if session_type:
+        query = query.filter(ChatSession.session_type == session_type)
+    sessions = query.order_by(ChatSession.created_at.desc()).all()
     return ChatSessionListResponse(sessions=sessions)
 
 
@@ -330,7 +336,10 @@ async def chat_with_agent(request: AgentChatRequest, db: Session = Depends(get_d
             if not session:
                 raise HTTPException(status_code=404, detail="会话不存在")
         else:
-            session = ChatSession(title=request.message[:30] + ("..." if len(request.message) > 30 else ""))
+            session = ChatSession(
+                title=request.message[:30] + ("..." if len(request.message) > 30 else ""),
+                session_type="agentic"
+            )
             db.add(session)
             db.commit()
             db.refresh(session)

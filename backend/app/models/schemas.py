@@ -55,6 +55,7 @@ class ChatRequest(BaseModel):
     session_id: Optional[int] = None
     kb_ids: List[int] = Field(default_factory=list, description="选择的KnowledgeBase ID列表")
     use_web_search: bool = False
+    session_type: str = Field(default="rag", description="会话类型: rag, agentic, multi_agent")
 
 
 class ChatResponse(BaseModel):
@@ -74,6 +75,11 @@ class ChatMessageResponse(BaseModel):
     sources: Optional[List[str]] = None
     search_results: Optional[List[dict]] = None
     thinking_steps: Optional[List[dict]] = None
+    # 多Agent执行流程数据
+    agent_plan: Optional[List[dict]] = None
+    agent_logs: Optional[List[dict]] = None
+    completed_tasks: Optional[List[str]] = None
+    current_task_id: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -82,6 +88,7 @@ class ChatMessageResponse(BaseModel):
 class ChatSessionResponse(BaseModel):
     id: int
     title: str
+    session_type: str = "rag"  # rag, agentic, multi_agent
     created_at: datetime
     messages: List[ChatMessageResponse] = []
 
@@ -122,3 +129,77 @@ class AgentStepResponse(BaseModel):
 
 # Update forward references
 KnowledgeBaseWithDocuments.model_rebuild()
+
+
+# Agent Schemas
+class AgentConfigCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255, description="Agent名称")
+    type: str = Field(..., description="Agent类型: retrieval/analysis/writing/custom")
+    description: Optional[str] = Field(None, description="Agent描述")
+    system_prompt: Optional[str] = Field(None, description="系统提示词")
+    tools: Optional[List[str]] = Field(default_factory=list, description="工具列表")
+    model_name: Optional[str] = Field(None, description="模型名称")
+    temperature: Optional[float] = Field(default=0.7, ge=0, le=2, description="温度参数")
+
+
+class AgentConfigUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=255, description="Agent名称")
+    description: Optional[str] = Field(None, description="Agent描述")
+    system_prompt: Optional[str] = Field(None, description="系统提示词")
+    tools: Optional[List[str]] = Field(None, description="工具列表")
+    model_name: Optional[str] = Field(None, description="模型名称")
+    temperature: Optional[float] = Field(None, ge=0, le=2, description="温度参数")
+    is_active: Optional[bool] = Field(None, description="是否启用")
+
+
+class AgentConfigResponse(BaseModel):
+    id: int
+    name: str
+    type: str
+    description: Optional[str]
+    system_prompt: Optional[str]
+    tools: List[str] = []
+    model_name: Optional[str]
+    temperature: float
+    is_active: bool
+    created_at: datetime
+    updated_at: Optional[datetime]
+
+    class Config:
+        from_attributes = True
+
+
+class AgentExecutionResponse(BaseModel):
+    id: int
+    session_id: int
+    agent_name: str
+    agent_type: str
+    task: str
+    input_context: Optional[str]
+    output: Optional[str]
+    status: str
+    error: Optional[str]
+    started_at: datetime
+    completed_at: Optional[datetime]
+
+    class Config:
+        from_attributes = True
+
+
+# Multi-Agent Chat Schemas
+class MultiAgentChatRequest(BaseModel):
+    message: str = Field(..., min_length=1, description="用户消息")
+    session_id: Optional[int] = None
+    kb_ids: Optional[List[int]] = Field(default=None, description="可选的知识库ID列表")
+    use_web_search: bool = True
+    show_process: bool = True  # 是否展示执行过程
+
+
+class AgentTaskEvent(BaseModel):
+    type: str  # planning/plan/task_start/task_complete/analysis/answer/error/result
+    task_id: Optional[str] = None
+    agent_type: Optional[str] = None
+    description: Optional[str] = None
+    content: Optional[str] = None
+    status: Optional[str] = None
+    tasks: Optional[List[dict]] = None

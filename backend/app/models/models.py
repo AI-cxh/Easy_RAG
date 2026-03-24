@@ -43,6 +43,7 @@ class ChatSession(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(255), nullable=False, default="新对话")
+    session_type = Column(String(20), default="rag")  # rag, agentic, multi_agent
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # 关系
@@ -63,3 +64,40 @@ class ChatMessage(Base):
 
     # 关系
     session = relationship("ChatSession", back_populates="messages")
+
+
+class AgentConfig(Base):
+    """Agent配置模型"""
+    __tablename__ = "agent_configs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False, unique=True)
+    type = Column(String(50), nullable=False)  # retrieval/analysis/writing/custom
+    description = Column(Text)
+    system_prompt = Column(Text)
+    tools = Column(Text)  # JSON格式的工具配置
+    model_name = Column(String(255))
+    temperature = Column(Integer, default=70)  # 存储为整数(0-100)，使用时除以100
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class AgentExecution(Base):
+    """Agent执行记录模型"""
+    __tablename__ = "agent_executions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey("chat_sessions.id", ondelete="CASCADE"), nullable=False)
+    agent_name = Column(String(255), nullable=False)
+    agent_type = Column(String(50), nullable=False)
+    task = Column(Text, nullable=False)
+    input_context = Column(Text)  # JSON格式的输入上下文
+    output = Column(Text)
+    status = Column(String(50), default="pending")  # pending/running/completed/failed
+    error = Column(Text)
+    started_at = Column(DateTime(timezone=True), server_default=func.now())
+    completed_at = Column(DateTime(timezone=True))
+
+    # 关系
+    session = relationship("ChatSession")

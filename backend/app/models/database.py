@@ -49,3 +49,10 @@ def init_db():
             if 'chunk_overlap' not in kb_columns:
                 conn.execute(text("ALTER TABLE knowledge_bases ADD COLUMN chunk_overlap INTEGER DEFAULT 200"))
                 conn.commit()
+
+            # 为 chat_sessions 表添加 session_type 列
+            result = conn.execute(text("PRAGMA table_info(chat_sessions)"))
+            session_columns = [row[1] for row in result.fetchall()]
+            if 'session_type' not in session_columns:
+                conn.execute(text("ALTER TABLE chat_sessions ADD COLUMN session_type VARCHAR(20) DEFAULT 'rag'"))
+                conn.commit()

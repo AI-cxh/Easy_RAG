@@ -5,12 +5,22 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      redirect: '/chat'
+      redirect: '/rag'
     },
     {
-      path: '/chat',
-      name: 'Chat',
-      component: () => import('../views/Chat.vue')
+      path: '/rag',
+      name: 'RAG',
+      component: () => import('../views/ChatRAG.vue')
+    },
+    {
+      path: '/agentic',
+      name: 'Agentic',
+      component: () => import('../views/ChatAgentic.vue')
+    },
+    {
+      path: '/multi-agent',
+      name: 'MultiAgent',
+      component: () => import('../views/ChatMultiAgent.vue')
     },
     {
       path: '/knowledge',

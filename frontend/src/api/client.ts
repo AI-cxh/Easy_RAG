@@ -167,6 +167,7 @@ export const chatAPI = {
       session_id?: number
       kb_ids?: number[]
       use_web_search?: boolean
+      session_type?: string
     },
     onChunk: (message: StreamMessage) => void
   ): Promise<{ sessionId: number; sources?: string[]; searchResults?: any[] }> => {
@@ -233,8 +234,11 @@ export const chatAPI = {
   },
 
   // 获取所有会话
-  getSessions: async () => {
-    const response = await fetch(`${API_BASE_URL}/chat/sessions`)
+  getSessions: async (sessionType?: string) => {
+    const url = sessionType
+      ? `${API_BASE_URL}/chat/sessions?session_type=${sessionType}`
+      : `${API_BASE_URL}/chat/sessions`
+    const response = await fetch(url)
     if (!response.ok) {
       const error = await response.text()
       throw new Error(error || '请求失败')
@@ -421,7 +425,7 @@ export const agentAPI = {
 // MCP API
 export interface MCPServerConfig {
   name: string
-  transport: 'stdio' | 'http' | 'streamable-http'
+  transport: 'stdio' | 'http' | 'sse' | 'streamable-http'
   command?: string
   args?: string[]
   url?: string
@@ -509,6 +513,189 @@ export const mcpAPI = {
     if (!response.ok) {
       const error = await response.text()
       throw new Error(error || '重新加载失败')
+    }
+    return response.json()
+  }
+}
+
+
+// Multi-Agent API
+export interface MultiAgentStreamMessage {
+  type: 'planning' | 'plan' | 'task_start' | 'task_complete' | 'thought' | 'tool_call' | 'tool_result' | 'analysis' | 'answer' | 'error' | 'result' | 'done'
+  task_id?: string
+  agent_type?: string
+  description?: string
+  content?: string
+  status?: string
+  tasks?: Array<{
+    id: string
+    agent_type: string
+    description: string
+    priority: number
+  }>
+  session_id?: number
+  sources?: string[]
+  search_results?: Array<{ title: string; url: string; snippet?: string }>
+}
+
+export interface AgentTaskInfo {
+  id: string
+  agent_type: string
+  description: string
+  status: 'pending' | 'running' | 'completed' | 'failed'
+}
+
+export const multiAgentAPI = {
+  // 多Agent聊天 - 流式响应
+  sendMessageStream: async (
+    data: {
+      message: string
+      session_id?: number
+      kb_ids?: number[]
+      use_web_search?: boolean
+      show_process?: boolean
+    },
+    onChunk: (message: MultiAgentStreamMessage) => void
+  ): Promise<{
+    sessionId: number
+    sources?: string[]
+    searchResults?: Array<{ title: string; url: string; snippet?: string }>
+  }> => {
+    const response = await fetch(`${API_BASE_URL}/chat/multi-agent`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(data)
+    })
+
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+
+    const reader = response.body?.getReader()
+    const decoder = new TextDecoder()
+
+    if (!reader) {
+      throw new Error('无法读取响应流')
+    }
+
+    let sessionId: number | undefined
+    let sources: string[] = []
+    let searchResults: Array<{ title: string; url: string; snippet?: string }> = []
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const msgData = JSON.parse(line.slice(6))
+            onChunk(msgData)
+
+            if (msgData.type === 'done') {
+              sessionId = msgData.session_id
+              sources = msgData.sources || []
+              searchResults = msgData.search_results || []
+            }
+          } catch (e) {
+            console.error('Failed to parse SSE data:', e)
+          }
+        }
+      }
+    }
+
+    return {
+      sessionId: sessionId || data.session_id!,
+      sources,
+      searchResults
+    }
+  },
+
+  // 获取Agent类型列表
+  getAgentTypes: async () => {
+    const response = await fetch(`${API_BASE_URL}/agents/types/list`)
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  },
+
+  // 获取所有Agent配置
+  getAgents: async () => {
+    const response = await fetch(`${API_BASE_URL}/agents`)
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  },
+
+  // 创建自定义Agent
+  createAgent: async (data: {
+    name: string
+    type: string
+    description?: string
+    system_prompt?: string
+    tools?: string[]
+    model_name?: string
+    temperature?: number
+  }) => {
+    const response = await fetch(`${API_BASE_URL}/agents`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(data)
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '创建Agent失败')
+    }
+    return response.json()
+  },
+
+  // 更新Agent配置
+  updateAgent: async (id: number, data: {
+    name?: string
+    description?: string
+    system_prompt?: string
+    tools?: string[]
+    model_name?: string
+    temperature?: number
+    is_active?: boolean
+  }) => {
+    const response = await fetch(`${API_BASE_URL}/agents/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(data)
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '更新Agent失败')
+    }
+    return response.json()
+  },
+
+  // 删除Agent
+  deleteAgent: async (id: number) => {
+    const response = await fetch(`${API_BASE_URL}/agents/${id}`, {
+      method: 'DELETE'
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '删除Agent失败')
     }
     return response.json()
   }
