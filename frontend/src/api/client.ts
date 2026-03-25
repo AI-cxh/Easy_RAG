@@ -349,7 +349,8 @@ export const agentAPI = {
       use_web_search?: boolean
       show_thinking?: boolean
     },
-    onChunk: (message: AgentStreamMessage) => void
+    onChunk: (message: AgentStreamMessage) => void,
+    signal?: AbortSignal
   ): Promise<{
     sessionId: number
     thinkingSteps?: ThinkingStep[]
@@ -361,7 +362,8 @@ export const agentAPI = {
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(data)
+      body: JSON.stringify(data),
+      signal
     })
 
     if (!response.ok) {
@@ -440,6 +442,18 @@ export interface MCPTool {
   description?: string
 }
 
+export interface Tool {
+  name: string
+  description: string
+  source: 'builtin' | 'mcp'
+}
+
+export interface AllTools {
+  builtin_tools: Tool[]
+  mcp_tools: Tool[]
+  total: number
+}
+
 export interface MCPStatus {
   initialized: boolean
   servers: MCPServer[]
@@ -447,6 +461,16 @@ export interface MCPStatus {
 }
 
 export const mcpAPI = {
+  // 获取所有可用工具
+  getAllTools: async (): Promise<AllTools> => {
+    const response = await fetch(`${API_BASE_URL}/mcp/tools/all`)
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  },
+
   // 获取MCP状态
   getStatus: async (): Promise<MCPStatus> => {
     const response = await fetch(`${API_BASE_URL}/mcp/status`)
@@ -555,7 +579,8 @@ export const multiAgentAPI = {
       use_web_search?: boolean
       show_process?: boolean
     },
-    onChunk: (message: MultiAgentStreamMessage) => void
+    onChunk: (message: MultiAgentStreamMessage) => void,
+    signal?: AbortSignal
   ): Promise<{
     sessionId: number
     sources?: string[]
@@ -566,7 +591,8 @@ export const multiAgentAPI = {
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(data)
+      body: JSON.stringify(data),
+      signal
     })
 
     if (!response.ok) {

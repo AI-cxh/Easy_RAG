@@ -1,23 +1,7 @@
 <template>
   <div class="settings-layout">
     <!-- 左侧固定导航栏 -->
-    <nav class="nav-rail">
-      <router-link to="/chat" class="nav-rail-btn" title="历史记录">
-        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-          <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
-        </svg>
-      </router-link>
-      <router-link to="/knowledge" class="nav-rail-btn" title="知识库管理">
-        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-          <path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9H9V9h10v2zm-4 4H9v-2h6v2zm4-8H9V5h10v2z"/>
-        </svg>
-      </router-link>
-      <router-link to="/settings" class="nav-rail-btn" title="设置">
-        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-          <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
-        </svg>
-      </router-link>
-    </nav>
+    <AppNavRail />
 
     <!-- 主内容区 -->
     <div class="settings-main-wrapper">
@@ -303,6 +287,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { settingsAPI, mcpAPI, type MCPServer, type MCPTool } from '../api/client'
+import AppNavRail from '../components/AppNavRail.vue'
 
 interface ModelSettings {
   model: string
@@ -461,72 +446,6 @@ onMounted(() => {
   height: 100vh;
   height: 100dvh;
   background: var(--bg-primary);
-}
-
-/* 左侧固定导航栏 - 自适应宽度 */
-.nav-rail {
-  width: clamp(56px, 8vw, 72px);
-  background: var(--bg-secondary);
-  border-right: 1px solid var(--border-subtle);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: var(--space-4) 0;
-  gap: var(--space-2);
-  flex-shrink: 0;
-}
-
-.nav-rail-btn {
-  width: clamp(36px, 5vw, 44px);
-  height: clamp(36px, 5vw, 44px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-lg);
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all var(--duration-normal) var(--ease-soft);
-  text-decoration: none;
-  position: relative;
-}
-
-.nav-rail-btn::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: var(--color-primary-light);
-  opacity: 0;
-  transform: scale(0.8);
-  transition: all var(--duration-normal) var(--ease-spring);
-}
-
-.nav-rail-btn:hover {
-  color: var(--text-primary);
-}
-
-.nav-rail-btn:hover::before {
-  opacity: 1;
-  transform: scale(1);
-}
-
-.nav-rail-btn.router-link-active {
-  color: var(--color-primary);
-}
-
-.nav-rail-btn.router-link-active::before {
-  opacity: 1;
-  transform: scale(1);
-}
-
-.nav-rail-btn svg {
-  width: clamp(18px, 2.5vw, 22px);
-  height: clamp(18px, 2.5vw, 22px);
-  fill: currentColor;
-  position: relative;
-  z-index: 1;
 }
 
 /* 主内容区包装 */

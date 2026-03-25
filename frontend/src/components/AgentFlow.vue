@@ -161,6 +161,27 @@ const getAgentLabel = (type: string) => agentLabels[type] || type
 
 .flow-content {
   padding: var(--space-3);
+  max-height: 500px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-default) transparent;
+}
+
+.flow-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.flow-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.flow-content::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 3px;
+}
+
+.flow-content::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
 }
 
 .section-title {
@@ -264,7 +285,9 @@ const getAgentLabel = (type: string) => agentLabels[type] || type
   color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .logs-section {
@@ -330,9 +353,8 @@ const getAgentLabel = (type: string) => agentLabels[type] || type
 
 .log-text {
   color: var(--text-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 /* Expand transition */

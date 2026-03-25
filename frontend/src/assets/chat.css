@@ -179,6 +179,8 @@
   margin: 0 auto;
   width: 100%;
   padding: 0 var(--space-2);
+  display: flex;
+  flex-direction: column;
 }
 
 .message {
@@ -186,6 +188,8 @@
   gap: var(--space-4);
   margin-bottom: var(--space-6);
   animation: slideUp var(--duration-normal) var(--ease-spring);
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .message.user {
@@ -223,6 +227,8 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .message.user .message-content {
@@ -234,6 +240,8 @@
   flex-direction: column;
   align-items: flex-start;
   gap: var(--space-2);
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .message.user .message-wrapper {
@@ -246,6 +254,26 @@
   font-size: var(--text-sm);
   line-height: 1.7;
   max-width: min(600px, 85vw);
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.message-text :deep(pre) {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: var(--space-3) 0;
+}
+
+.message-text :deep(code) {
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.message-text :deep(pre code) {
+  display: block;
+  overflow-x: auto;
+  white-space: pre;
 }
 
 .message.user .message-text {
@@ -737,4 +765,83 @@
   border-radius: var(--radius-sm);
   font-family: var(--font-mono);
   font-size: var(--text-sm);
+}
+
+/* 消息操作按钮 */
+.message-actions {
+  display: flex;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+  opacity: 0;
+  transition: opacity var(--duration-fast);
+}
+
+.message:hover .message-actions {
+  opacity: 1;
+}
+
+.action-icon {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--duration-fast);
+}
+
+.action-icon:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.action-icon svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+}
+
+.action-icon.delete:hover {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+/* 编辑消息输入框 */
+.edit-input-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.edit-input-wrapper .textarea {
+  width: 100%;
+  min-height: 60px;
+  padding: var(--space-3);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-sm);
+  resize: vertical;
+}
+
+.edit-input-wrapper .textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.edit-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.edit-actions .btn {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
 }

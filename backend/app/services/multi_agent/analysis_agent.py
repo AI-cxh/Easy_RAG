@@ -1,29 +1,37 @@
 """分析Agent - 负责深度分析和推理"""
-from typing import Dict, Optional, Any, AsyncGenerator
+from typing import Dict, Optional, Any, AsyncGenerator, List
 import time
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
+from langchain_core.tools import BaseTool
 
 from app.config import settings
 from app.services.multi_agent.base_agent import (
     BaseAgent, AgentResult, AgentTask, AgentType
 )
+from app.services.tools import get_all_tools
+from app.services.mcp_client import mcp_client
 
 
 class AnalysisAgent(BaseAgent):
-    """分析Agent - 负责深度分析和推理"""
+    """分析Agent - 负责深度分析和推理，支持MCP工具"""
 
     SYSTEM_PROMPT = """你是一个专业的分析Agent。你的职责是：
 1. 对检索到的信息进行深度分析
 2. 识别关键信息和潜在关联
 3. 进行逻辑推理和归纳
-4. 得出分析结论
+4. 使用可用的工具进行额外查询或计算
+5. 得出分析结论
+
+可用工具：
+- 以及其他可用的MCP工具
 
 分析要求：
 - 客观、全面地分析信息
 - 识别信息之间的关联和矛盾
 - 进行逻辑推理，得出合理结论
 - 指出信息的可靠性和局限性
+- 必要时使用工具获取更多信息
 
 输出格式：
 1. 信息分析：对输入信息的分析
@@ -43,11 +51,21 @@ class AnalysisAgent(BaseAgent):
             model_name: 使用的模型名称
             temperature: 温度参数
         """
+        # 获取内置工具
+        builtin_tools = get_all_tools()
+
+        # 获取MCP工具
+        mcp_tools = mcp_client.get_tools()
+
+        # 合并所有工具
+        all_tools: List[BaseTool] = builtin_tools + mcp_tools
+
         super().__init__(
             name="analysis_agent",
             description="分析Agent，负责深度分析和推理",
             agent_type=AgentType.ANALYSIS,
             system_prompt=self.SYSTEM_PROMPT,
+            tools=all_tools,
             model_name=model_name or settings.MODEL_NAME,
             temperature=temperature
         )
@@ -60,7 +78,7 @@ class AnalysisAgent(BaseAgent):
         )
 
     async def execute(self, task: AgentTask, context: Dict[str, Any]) -> AgentResult:
-        """执行分析任务"""
+        """执行分析任务 - 使用LLM动态工具调用"""
         start_time = time.time()
         intermediate_steps = []
 
@@ -68,21 +86,54 @@ class AnalysisAgent(BaseAgent):
             # 构建分析提示
             analysis_prompt = self._build_analysis_prompt(task, context)
 
-            # 执行分析
-            messages = [
-                SystemMessage(content=self.SYSTEM_PROMPT),
-                HumanMessage(content=analysis_prompt)
-            ]
+            # 构建消息
+            messages = [SystemMessage(content=self.SYSTEM_PROMPT)]
+            messages.append(HumanMessage(content=analysis_prompt))
 
-            response = await self.llm.ainvoke(messages)
-            output = response.content
+            # 绑定工具到LLM
+            llm_with_tools = self.llm.bind_tools(self.tools)
 
-            intermediate_steps.append({
-                "step": "analysis",
-                "input": analysis_prompt[:500],
-                "output": output
-            })
+            # 迭代执行
+            iteration = 0
+            max_iterations = 5
 
+            while iteration < max_iterations:
+                iteration += 1
+                response = await llm_with_tools.ainvoke(messages)
+
+                if response.tool_calls:
+                    messages.append(response)
+
+                    for tool_call in response.tool_calls:
+                        tool_name = tool_call["name"]
+                        tool_args = tool_call["args"]
+
+                        # 执行工具
+                        tool_result = await self._execute_tool(tool_name, tool_args)
+
+                        intermediate_steps.append({
+                            "step": tool_name,
+                            "args": tool_args,
+                            "result": tool_result
+                        })
+
+                        messages.append(ToolMessage(content=tool_result, tool_call_id=tool_call["id"]))
+                else:
+                    # 没有工具调用，生成最终输出
+                    output = response.content
+
+                    return AgentResult(
+                        task_id=task.id,
+                        agent_name=self.name,
+                        agent_type=self.agent_type,
+                        success=True,
+                        output=output,
+                        intermediate_steps=intermediate_steps,
+                        execution_time=time.time() - start_time
+                    )
+
+            # 达到最大迭代次数
+            output = response.content if response.content else "分析完成"
             return AgentResult(
                 task_id=task.id,
                 agent_name=self.name,
@@ -104,10 +155,24 @@ class AnalysisAgent(BaseAgent):
                 execution_time=time.time() - start_time
             )
 
+    async def _execute_tool(self, tool_name: str, tool_args: Dict) -> str:
+        """执行工具调用"""
+        for tool in self.tools:
+            if tool.name == tool_name:
+                try:
+                    if hasattr(tool, 'ainvoke'):
+                        result = await tool.ainvoke(tool_args)
+                    else:
+                        result = tool.invoke(tool_args)
+                    return str(result)
+                except Exception as e:
+                    return f"工具执行出错: {str(e)}"
+        return f"未找到工具: {tool_name}"
+
     async def stream_execute(
         self, task: AgentTask, context: Dict[str, Any]
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        """流式执行分析任务"""
+        """流式执行分析任务 - 使用LLM动态工具调用"""
         start_time = time.time()
         intermediate_steps = []
 
@@ -121,29 +186,79 @@ class AnalysisAgent(BaseAgent):
                 "content": "开始分析检索到的信息..."
             }
 
-            # 执行分析
-            messages = [
-                SystemMessage(content=self.SYSTEM_PROMPT),
-                HumanMessage(content=analysis_prompt)
-            ]
+            # 构建消息
+            messages = [SystemMessage(content=self.SYSTEM_PROMPT)]
+            messages.append(HumanMessage(content=analysis_prompt))
 
-            # 流式输出分析结果
-            output = ""
-            async for chunk in self.llm.astream(messages):
-                if chunk.content:
-                    output += chunk.content
+            # 绑定工具到LLM
+            llm_with_tools = self.llm.bind_tools(self.tools)
+
+            # 迭代执行
+            iteration = 0
+            max_iterations = 5
+
+            while iteration < max_iterations:
+                iteration += 1
+                response = await llm_with_tools.ainvoke(messages)
+
+                if response.tool_calls:
+                    # 发送思考事件
                     yield {
-                        "type": "analysis",
-                        "content": chunk.content
+                        "type": "thought",
+                        "content": "正在分析并决定是否使用工具..."
                     }
 
-            intermediate_steps.append({
-                "step": "analysis",
-                "input": analysis_prompt[:500],
-                "output": output
-            })
+                    messages.append(response)
 
-            # 发送结果
+                    for tool_call in response.tool_calls:
+                        tool_name = tool_call["name"]
+                        tool_args = tool_call["args"]
+
+                        # 发送工具调用事件
+                        yield {
+                            "type": "tool_call",
+                            "tool_name": tool_name,
+                            "content": f"调用工具: {tool_name}"
+                        }
+
+                        # 执行工具
+                        tool_result = await self._execute_tool(tool_name, tool_args)
+
+                        intermediate_steps.append({
+                            "step": tool_name,
+                            "args": tool_args,
+                            "result": tool_result
+                        })
+
+                        # 发送工具结果事件
+                        yield {
+                            "type": "tool_result",
+                            "tool_name": tool_name,
+                            "content": tool_result[:500] + "..." if len(tool_result) > 500 else tool_result
+                        }
+
+                        messages.append(ToolMessage(content=tool_result, tool_call_id=tool_call["id"]))
+                else:
+                    # 没有工具调用，生成最终输出
+                    output = response.content
+
+                    # 发送结果
+                    yield {
+                        "type": "result",
+                        "result": {
+                            "task_id": task.id,
+                            "agent_name": self.name,
+                            "agent_type": self.agent_type.value,
+                            "success": True,
+                            "output": output,
+                            "intermediate_steps": intermediate_steps,
+                            "execution_time": time.time() - start_time
+                        }
+                    }
+                    return
+
+            # 达到最大迭代次数
+            output = response.content if response.content else "分析完成"
             yield {
                 "type": "result",
                 "result": {

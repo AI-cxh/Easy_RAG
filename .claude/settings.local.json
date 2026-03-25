@@ -7,7 +7,10 @@
       "Bash(cd E:/Easy_RAG/frontend && npm run build 2>&1 | tail -10)",
       "Bash(ls -la *.log)",
       "Bash(ls -la /home/chenxuhao/project/agentic_RAG/backend/*.db)",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Bash(npm run:*)",
+      "Bash(python -m py_compile app/services/multi_agent/retrieval_agent.py)",
+      "Bash(python:*)"
     ]
   }
 }

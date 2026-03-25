@@ -115,6 +115,27 @@ const getStepLabel = (type: string): string => {
 
 .thinking-content {
   padding: 0 16px 16px;
+  max-height: 400px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #e0e7ff transparent;
+}
+
+.thinking-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.thinking-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.thinking-content::-webkit-scrollbar-thumb {
+  background: #c7d2fe;
+  border-radius: 3px;
+}
+
+.thinking-content::-webkit-scrollbar-thumb:hover {
+  background: #a5b4fc;
 }
 
 .thinking-step {
@@ -214,5 +235,7 @@ const getStepLabel = (type: string): string => {
 
 .step-text {
   line-height: 1.5;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 </style>

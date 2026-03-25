@@ -5,6 +5,7 @@ from typing import List, Optional, Dict, Any
 
 from app.services.mcp_client import mcp_client
 from app.services.agent import agent_service
+from app.services.tools import get_all_tools
 from app.config import settings
 
 router = APIRouter()
@@ -35,11 +36,54 @@ class MCPToolResponse(BaseModel):
     description: Optional[str] = None
 
 
+class ToolResponse(BaseModel):
+    """工具响应"""
+    name: str
+    description: str
+    source: str  # builtin | mcp
+
+
+class AllToolsResponse(BaseModel):
+    """所有工具响应"""
+    builtin_tools: List[ToolResponse]
+    mcp_tools: List[ToolResponse]
+    total: int
+
+
 class MCPStatusResponse(BaseModel):
     """MCP状态响应"""
     initialized: bool
     servers: List[MCPServerResponse]
     tools: List[MCPToolResponse]
+
+
+@router.get("/mcp/tools/all", response_model=AllToolsResponse)
+async def get_all_available_tools():
+    """获取所有可用工具（内置工具 + MCP工具）"""
+    builtin_tools = []
+    mcp_tools = []
+
+    # 获取内置工具
+    for tool in get_all_tools():
+        builtin_tools.append(ToolResponse(
+            name=tool.name,
+            description=tool.description or "",
+            source="builtin"
+        ))
+
+    # 获取MCP工具
+    for tool in mcp_client.get_tools():
+        mcp_tools.append(ToolResponse(
+            name=tool.name,
+            description=tool.description if hasattr(tool, 'description') else "",
+            source="mcp"
+        ))
+
+    return AllToolsResponse(
+        builtin_tools=builtin_tools,
+        mcp_tools=mcp_tools,
+        total=len(builtin_tools) + len(mcp_tools)
+    )
 
 
 @router.get("/mcp/status", response_model=MCPStatusResponse)
