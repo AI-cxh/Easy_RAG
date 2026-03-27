@@ -15,7 +15,11 @@ class KnowledgeBase(Base):
     # 分块设置
     chunk_size = Column(Integer, default=1000)
     chunk_overlap = Column(Integer, default=200)
+    # 新增字段
+    embedding_model = Column(String(255), default="text-embedding-ada-002")
+    owner = Column(String(100), default="")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # 关系
     documents = relationship("Document", back_populates="knowledge_base", cascade="all, delete-orphan")
@@ -30,11 +34,37 @@ class Document(Base):
     filename = Column(String(255), nullable=False)
     file_path = Column(String(500), nullable=False)
     file_size = Column(Integer)
+    file_type = Column(String(20), default="")
     chunk_count = Column(Integer, default=0)
+    # 新增字段
+    source = Column(String(100), default="upload")
+    processing_mode = Column(String(50), default="auto")
+    status = Column(String(20), default="completed")
+    enabled = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # 关系
     knowledge_base = relationship("KnowledgeBase", back_populates="documents")
+    chunks = relationship("Chunk", back_populates="document", cascade="all, delete-orphan")
+
+
+class Chunk(Base):
+    """分块模型"""
+    __tablename__ = "chunks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    doc_id = Column(Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    content = Column(Text, nullable=False)
+    char_count = Column(Integer, default=0)
+    token_count = Column(Integer, default=0)
+    enabled = Column(Boolean, default=True)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # 关系
+    document = relationship("Document", back_populates="chunks")
 
 
 class ChatSession(Base):

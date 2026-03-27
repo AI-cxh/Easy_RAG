@@ -41,8 +41,6 @@ export function useSession(sessionType: SessionType) {
 
   // 删除会话
   const deleteSession = async (sessionId: number) => {
-    if (!confirm('确定要删除该对话吗？')) return false
-
     try {
       await chatAPI.deleteSession(sessionId)
       sessionsMap.value[sessionType] = sessionsMap.value[sessionType].filter(s => s.id !== sessionId)

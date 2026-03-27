@@ -74,6 +74,26 @@
         </div>
       </div>
     </Teleport>
+
+    <!-- 删除确认对话框 -->
+    <Teleport to="body">
+      <div v-if="deletingSessionId" class="dialog-overlay" @click.self="cancelDelete">
+        <div class="dialog dialog-danger">
+          <div class="dialog-header">
+            <h3 class="dialog-title">删除对话</h3>
+            <button class="dialog-close" @click="cancelDelete">&times;</button>
+          </div>
+          <div class="dialog-body">
+            <p class="dialog-message">确定要删除对话 "<strong>{{ deletingSessionName }}</strong>" 吗？</p>
+            <p class="dialog-hint">此操作无法撤销。</p>
+          </div>
+          <div class="dialog-footer">
+            <button class="btn btn-secondary" @click="cancelDelete">取消</button>
+            <button class="btn btn-danger" @click="confirmDelete">删除</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </aside>
 </template>
 
@@ -99,6 +119,10 @@ const emit = defineEmits<{
 const editingSessionId = ref<number>()
 const editingSessionName = ref('')
 const renameInputRef = ref<HTMLInputElement>()
+
+// 删除确认对话框状态
+const deletingSessionId = ref<number>()
+const deletingSessionName = ref('')
 
 // 时间格式化
 const formatTime = (dateStr: string) => {
@@ -137,7 +161,21 @@ const handleRename = () => {
 }
 
 const handleDelete = (sessionId: number) => {
-  emit('deleteSession', sessionId)
+  // 找到会话名称
+  const session = props.sessions.find(s => s.id === sessionId)
+  deletingSessionId.value = sessionId
+  deletingSessionName.value = session?.title || '这个对话'
+}
+
+const confirmDelete = () => {
+  if (!deletingSessionId.value) return
+  emit('deleteSession', deletingSessionId.value)
+  cancelDelete()
+}
+
+const cancelDelete = () => {
+  deletingSessionId.value = undefined
+  deletingSessionName.value = ''
 }
 </script>
 
@@ -403,6 +441,44 @@ const handleDelete = (sessionId: number) => {
 .btn-secondary:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+}
+
+.btn-danger {
+  background: var(--color-danger);
+  color: white;
+  border: 1px solid var(--color-danger);
+}
+
+.btn-danger:hover {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+
+/* 删除对话框样式 */
+.dialog-danger .dialog-header {
+  background: rgba(220, 38, 38, 0.08);
+}
+
+.dialog-danger .dialog-title {
+  color: var(--color-danger);
+}
+
+.dialog-message {
+  margin: 0;
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  line-height: 1.6;
+}
+
+.dialog-message strong {
+  color: var(--text-primary);
+  font-weight: var(--font-semibold);
+}
+
+.dialog-hint {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
 }
 
 /* 移动端适配 */

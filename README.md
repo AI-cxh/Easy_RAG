@@ -12,6 +12,9 @@
 
 ### 核心功能
 
+- **三层级知识库管理** - 知识库 → 文档 → 分块，精细化管控数据
+- **分块管理** - 查看、编辑、启用/禁用单个分块，支持批量操作
+- **文档状态管理** - 启用/禁用文档，控制是否参与检索
 - **多知识库管理** - 创建、删除独立的知识库，支持多知识库同时检索
 - **文件上传** - 支持 PDF、TXT、MD、DOCX 格式文档
 - **网络搜索** - 集成 Tavily 搜索引擎，获取实时信息
@@ -50,6 +53,7 @@ agentic_RAG/
 │   │   │   ├── chat.py          # 聊天 API
 │   │   │   ├── knowledge.py     # 知识库 API
 │   │   │   ├── upload.py        # 文件上传 API
+│   │   │   ├── chunks.py        # 分块管理 API
 │   │   │   ├── agents.py        # Agent 管理 API
 │   │   │   ├── mcp.py           # MCP 服务管理 API
 │   │   │   └── app_settings.py  # 设置 API
@@ -69,6 +73,9 @@ agentic_RAG/
 │   │   │       └── custom_agent.py    # 自定义 Agent
 │   │   └── utils/
 │   │       └── file_parser.py   # 文件解析
+│   ├── scripts/
+│   │   ├── migrate_db.py        # 数据库迁移脚本
+│   │   └── migrate_chunks.py    # 分块数据迁移脚本
 │   ├── requirements.txt
 │   └── .env.example
 ├── frontend/
@@ -77,11 +84,15 @@ agentic_RAG/
 │   │   │   ├── ChatRAG.vue       # RAG 对话页面
 │   │   │   ├── ChatAgentic.vue   # Agent 对话页面
 │   │   │   ├── ChatMultiAgent.vue # 多 Agent 对话页面
-│   │   │   ├── KnowledgeBase.vue # 知识库管理页面
+│   │   │   ├── KnowledgeList.vue # 知识库列表页面
+│   │   │   ├── DocumentList.vue  # 文档列表页面
+│   │   │   ├── ChunkList.vue     # 分块列表页面
 │   │   │   └── Settings.vue      # 设置页面
 │   │   ├── components/
 │   │   │   ├── AgentFlow.vue     # Agent 执行流程可视化
 │   │   │   ├── AgentThinking.vue # Agent 思考过程展示
+│   │   │   ├── Pagination.vue    # 分页组件
+│   │   │   ├── Breadcrumb.vue    # 面包屑导航
 │   │   │   ├── ToolsPanel.vue    # 工具面板
 │   │   │   └── ...
 │   │   ├── api/
@@ -164,10 +175,34 @@ npm run dev
 
 ### 知识库管理
 
-1. 访问"知识库"页面
-2. 点击"创建知识库"，输入名称和描述
-3. 选择知识库后上传文档（支持 PDF、TXT、MD、DOCX）
-4. 等待文档处理完成
+Easy RAG 采用三层级管理架构：
+
+```
+知识库 (Knowledge Base)
+  └── 文档 (Document)
+        └── 分块 (Chunk)
+```
+
+#### 知识库层级
+
+1. 访问"知识库管理"页面
+2. 点击"新建知识库"，输入名称、描述、分块参数等
+3. 点击知识库名称进入文档管理页面
+
+#### 文档层级
+
+1. 在文档管理页面上传文件（支持 PDF、TXT、MD、DOCX）
+2. 查看文档处理状态（处理中/已完成/失败）
+3. 可启用/禁用文档，禁用后该文档不参与检索
+4. 点击文档名称进入分块管理页面
+
+#### 分块层级
+
+1. 查看文档的所有分块内容
+2. 编辑分块内容，自动更新向量
+3. 启用/禁用单个分块，精细控制检索范围
+4. 批量操作：批量启用/禁用、全量启用/禁用
+5. 重建向量：根据当前启用的分块重新生成向量
 
 ### RAG 模式
 
@@ -214,18 +249,71 @@ npm run dev
 
 ## API 端点
 
+### 聊天相关
+
 | 端点 | 方法 | 描述 |
 |------|------|------|
 | `/api/chat` | POST | RAG 模式聊天 |
 | `/api/chat/agent` | POST | Agent 模式聊天 (SSE) |
 | `/api/chat/multi-agent` | POST | 多 Agent 模式聊天 (SSE) |
 | `/api/chat/sessions` | GET | 获取会话列表 |
-| `/api/knowledge` | GET/POST | 知识库列表/创建 |
+| `/api/chat/sessions/{id}` | DELETE | 删除会话 |
+
+### 知识库管理
+
+| 端点 | 方法 | 描述 |
+|------|------|------|
+| `/api/knowledge` | GET | 获取知识库列表（分页） |
+| `/api/knowledge` | POST | 创建知识库 |
+| `/api/knowledge/stats` | GET | 获取统计数据 |
 | `/api/knowledge/{id}` | GET/PUT/DELETE | 知识库详情/更新/删除 |
+| `/api/knowledge/{id}/documents` | GET | 获取知识库的文档列表 |
+
+### 文档管理
+
+| 端点 | 方法 | 描述 |
+|------|------|------|
 | `/api/upload/{kb_id}` | POST | 上传文件到知识库 |
+| `/api/upload/documents/{id}` | PUT | 更新文档信息 |
+| `/api/upload/documents/{id}` | DELETE | 删除文档 |
+| `/api/upload/documents/{id}/toggle` | PUT | 切换文档启用状态 |
+
+### 分块管理
+
+| 端点 | 方法 | 描述 |
+|------|------|------|
+| `/api/chunks/{doc_id}` | GET | 获取分块列表（分页） |
+| `/api/chunks/{doc_id}` | POST | 创建分块 |
+| `/api/chunks/{chunk_id}` | PUT | 更新分块 |
+| `/api/chunks/{chunk_id}` | DELETE | 删除分块 |
+| `/api/chunks/{chunk_id}/toggle` | PUT | 切换分块启用状态 |
+| `/api/chunks/batch-enable` | POST | 批量启用分块 |
+| `/api/chunks/batch-disable` | POST | 批量禁用分块 |
+| `/api/chunks/enable-all/{doc_id}` | POST | 全量启用 |
+| `/api/chunks/disable-all/{doc_id}` | POST | 全量禁用 |
+| `/api/chunks/rebuild-vectors/{doc_id}` | POST | 重建向量 |
+
+### 其他
+
+| 端点 | 方法 | 描述 |
+|------|------|------|
 | `/api/agents` | GET/POST | Agent 配置列表/创建 |
 | `/api/mcp/servers` | GET | MCP 服务器列表 |
 | `/api/settings` | GET/POST | 应用设置 |
+
+## 数据迁移
+
+如果您从旧版本升级，需要运行迁移脚本：
+
+```bash
+cd backend
+
+# 迁移数据库结构（添加新字段）
+python scripts/migrate_db.py
+
+# 迁移分块数据（从 ChromaDB 同步到 SQLite）
+python scripts/migrate_chunks.py
+```
 
 ## 使用 DeepSeek
 
@@ -298,6 +386,11 @@ rm -rf backend/chroma_db
 - 检查 MCP 服务器是否正常运行
 - 确认配置中的命令路径和参数正确
 - 查看后端日志获取详细错误信息
+
+### 禁用功能不生效
+- 确保已运行数据库迁移脚本
+- 检查 ChromaDB 中的 metadata 是否包含 `enabled` 字段
+- 尝试重建向量
 
 ## 许可证
 

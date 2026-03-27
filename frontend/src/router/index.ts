@@ -24,8 +24,18 @@ const router = createRouter({
     },
     {
       path: '/knowledge',
-      name: 'Knowledge',
-      component: () => import('../views/KnowledgeBase.vue')
+      name: 'KnowledgeList',
+      component: () => import('../views/KnowledgeList.vue')
+    },
+    {
+      path: '/knowledge/:kbId/documents',
+      name: 'DocumentList',
+      component: () => import('../views/DocumentList.vue')
+    },
+    {
+      path: '/knowledge/:kbId/documents/:docId/chunks',
+      name: 'ChunkList',
+      component: () => import('../views/ChunkList.vue')
     },
     {
       path: '/settings',

@@ -8,7 +8,7 @@ import logging
 
 from app.config import settings
 from app.models.database import init_db
-from app.api import chat, knowledge, upload, app_settings as settings_api, mcp, agents
+from app.api import chat, knowledge, upload, app_settings as settings_api, mcp, agents, chunks
 from app.services.mcp_client import mcp_client
 from app.services.agent import agent_service
 
@@ -66,6 +66,7 @@ app.add_middleware(
 app.include_router(chat.router, prefix="/api", tags=["聊天"])
 app.include_router(knowledge.router, prefix="/api", tags=["知识库"])
 app.include_router(upload.router, prefix="/api", tags=["文件上传"])
+app.include_router(chunks.router, prefix="/api", tags=["分块管理"])
 app.include_router(settings_api.router, prefix="/api", tags=["设置"])
 app.include_router(mcp.router, prefix="/api", tags=["MCP"])
 app.include_router(agents.router, prefix="/api", tags=["Agent"])

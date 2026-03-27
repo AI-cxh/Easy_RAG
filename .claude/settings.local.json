@@ -10,7 +10,9 @@
       "mcp__ide__getDiagnostics",
       "Bash(npm run:*)",
       "Bash(python -m py_compile app/services/multi_agent/retrieval_agent.py)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(curl -s http://localhost:9000/api/knowledge)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

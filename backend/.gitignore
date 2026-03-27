@@ -47,3 +47,7 @@ chroma_db/
 # OS
 .DS_Store
 Thumbs.db
+
+后续开发计划.txt
+知识库管理模块重构文档.md
+CLAUDE.md

@@ -9,6 +9,8 @@ class KnowledgeBaseCreate(BaseModel):
     description: Optional[str] = None
     chunk_size: Optional[int] = Field(default=1000, ge=100, le=10000, description="分块大小")
     chunk_overlap: Optional[int] = Field(default=200, ge=0, le=2000, description="分块重叠")
+    embedding_model: Optional[str] = Field(default="text-embedding-ada-002", description="Embedding模型")
+    owner: Optional[str] = Field(default="", max_length=100, description="负责人")
 
 
 class KnowledgeBaseResponse(BaseModel):
@@ -17,10 +19,43 @@ class KnowledgeBaseResponse(BaseModel):
     description: Optional[str]
     chunk_size: int = 1000
     chunk_overlap: int = 200
+    embedding_model: str = "text-embedding-ada-002"
+    owner: str = ""
     created_at: datetime
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
+
+
+class KnowledgeBaseListItem(BaseModel):
+    """知识库列表项，包含文档数量"""
+    id: int
+    name: str
+    description: Optional[str]
+    chunk_size: int = 1000
+    chunk_overlap: int = 200
+    embedding_model: str = "text-embedding-ada-002"
+    owner: str = ""
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    doc_count: int = 0
+
+    class Config:
+        from_attributes = True
+
+
+class KnowledgeBaseListResponse(BaseModel):
+    items: List[KnowledgeBaseListItem]
+    total: int
+    page: int
+    page_size: int
+
+
+class KnowledgeBaseStatsResponse(BaseModel):
+    total_kbs: int
+    total_docs: int
+    kbs_with_docs: int
 
 
 class KnowledgeBaseWithDocuments(KnowledgeBaseResponse):
@@ -37,16 +72,66 @@ class DocumentResponse(BaseModel):
     filename: str
     file_path: str
     file_size: Optional[int]
+    file_type: str = ""
     chunk_count: int
+    source: str = "upload"
+    processing_mode: str = "auto"
+    status: str = "completed"
+    enabled: bool = True
     created_at: datetime
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
 
 
 class DocumentListResponse(BaseModel):
-    documents: List[DocumentResponse]
+    items: List[DocumentResponse]
     total: int
+    page: int
+    page_size: int
+
+
+class DocumentUpdateRequest(BaseModel):
+    filename: Optional[str] = Field(None, min_length=1, max_length=255)
+    source: Optional[str] = Field(None, max_length=100)
+    enabled: Optional[bool] = None
+
+
+# Chunk Schemas
+class ChunkResponse(BaseModel):
+    id: int
+    doc_id: int
+    content: str
+    char_count: int
+    token_count: int
+    enabled: bool
+    sort_order: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ChunkListResponse(BaseModel):
+    items: List[ChunkResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class ChunkCreate(BaseModel):
+    content: str = Field(..., min_length=1, description="分块内容")
+
+
+class ChunkUpdate(BaseModel):
+    content: Optional[str] = Field(None, min_length=1)
+    enabled: Optional[bool] = None
+
+
+class ChunkBatchRequest(BaseModel):
+    chunk_ids: List[int] = Field(..., min_items=1, description="分块ID列表")
 
 
 # Chat Schemas
@@ -109,6 +194,8 @@ class KnowledgeBaseRenameRequest(BaseModel):
     description: Optional[str] = None
     chunk_size: Optional[int] = Field(default=None, ge=100, le=10000, description="分块大小")
     chunk_overlap: Optional[int] = Field(default=None, ge=0, le=2000, description="分块重叠")
+    embedding_model: Optional[str] = Field(default=None, max_length=255, description="Embedding模型")
+    owner: Optional[str] = Field(default=None, max_length=100, description="负责人")
 
 
 # Agent Chat Schemas

@@ -2,14 +2,40 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000
 
 // 知识库API
 export const knowledgeAPI = {
-  // 获取所有知识库
+  // 获取统计数据
+  getStats: async () => {
+    const response = await fetch(`${API_BASE_URL}/knowledge/stats`)
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  },
+
+  // 获取知识库列表（分页）
+  getList: async (params: { page?: number; page_size?: number; search?: string } = {}) => {
+    const query = new URLSearchParams()
+    if (params.page) query.append('page', params.page.toString())
+    if (params.page_size) query.append('page_size', params.page_size.toString())
+    if (params.search) query.append('search', params.search)
+
+    const response = await fetch(`${API_BASE_URL}/knowledge?${query}`)
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  },
+
+  // 获取所有知识库（兼容旧接口）
   getAll: async () => {
     const response = await fetch(`${API_BASE_URL}/knowledge`)
     if (!response.ok) {
       const error = await response.text()
       throw new Error(error || '请求失败')
     }
-    return response.json()
+    const data = await response.json()
+    return data.items || data
   },
 
   // 创建知识库
@@ -18,6 +44,8 @@ export const knowledgeAPI = {
     description?: string
     chunk_size?: number
     chunk_overlap?: number
+    embedding_model?: string
+    owner?: string
   }) => {
     const response = await fetch(`${API_BASE_URL}/knowledge`, {
       method: 'POST',
@@ -56,8 +84,14 @@ export const knowledgeAPI = {
   },
 
   // 获取知识库文档列表
-  getDocuments: async (id: number) => {
-    const response = await fetch(`${API_BASE_URL}/knowledge/${id}/documents`)
+  getDocuments: async (id: number, params: { page?: number; page_size?: number; search?: string; status?: string } = {}) => {
+    const query = new URLSearchParams()
+    if (params.page) query.append('page', params.page.toString())
+    if (params.page_size) query.append('page_size', params.page_size.toString())
+    if (params.search) query.append('search', params.search)
+    if (params.status) query.append('status', params.status)
+
+    const response = await fetch(`${API_BASE_URL}/knowledge/${id}/documents?${query}`)
     if (!response.ok) {
       const error = await response.text()
       throw new Error(error || '请求失败')
@@ -71,6 +105,8 @@ export const knowledgeAPI = {
     description?: string
     chunk_size?: number
     chunk_overlap?: number
+    embedding_model?: string
+    owner?: string
   }) => {
     const response = await fetch(`${API_BASE_URL}/knowledge/${id}`, {
       method: 'PUT',
@@ -144,6 +180,166 @@ export const uploadAPI = {
     if (!response.ok) {
       const error = await response.text()
       throw new Error(error || '请求失败')
+    }
+    return response.json()
+  },
+
+  // 更新文档
+  updateDocument: async (docId: number, data: { filename?: string; source?: string; enabled?: boolean }) => {
+    const response = await fetch(`${API_BASE_URL}/upload/documents/${docId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  },
+
+  // 切换文档启用状态
+  toggleDocument: async (docId: number) => {
+    const response = await fetch(`${API_BASE_URL}/upload/documents/${docId}/toggle`, {
+      method: 'PUT'
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  }
+}
+
+// 分块管理API
+export const chunkAPI = {
+  // 获取分块列表
+  getList: async (docId: number, params: { page?: number; page_size?: number; enabled?: boolean } = {}) => {
+    const query = new URLSearchParams()
+    if (params.page) query.append('page', params.page.toString())
+    if (params.page_size) query.append('page_size', params.page_size.toString())
+    if (params.enabled !== undefined) query.append('enabled', params.enabled.toString())
+
+    const response = await fetch(`${API_BASE_URL}/chunks/${docId}?${query}`)
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  },
+
+  // 创建分块
+  create: async (docId: number, content: string) => {
+    const response = await fetch(`${API_BASE_URL}/chunks/${docId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content })
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '创建失败')
+    }
+    return response.json()
+  },
+
+  // 更新分块
+  update: async (chunkId: number, data: { content?: string; enabled?: boolean }) => {
+    const response = await fetch(`${API_BASE_URL}/chunks/${chunkId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '更新失败')
+    }
+    return response.json()
+  },
+
+  // 删除分块
+  delete: async (chunkId: number) => {
+    const response = await fetch(`${API_BASE_URL}/chunks/${chunkId}`, {
+      method: 'DELETE'
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '删除失败')
+    }
+    return response.json()
+  },
+
+  // 切换分块启用状态
+  toggle: async (chunkId: number) => {
+    const response = await fetch(`${API_BASE_URL}/chunks/${chunkId}/toggle`, {
+      method: 'PUT'
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  },
+
+  // 批量启用
+  batchEnable: async (chunkIds: number[]) => {
+    const response = await fetch(`${API_BASE_URL}/chunks/batch-enable`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chunk_ids: chunkIds })
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  },
+
+  // 批量禁用
+  batchDisable: async (chunkIds: number[]) => {
+    const response = await fetch(`${API_BASE_URL}/chunks/batch-disable`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chunk_ids: chunkIds })
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  },
+
+  // 全量启用
+  enableAll: async (docId: number) => {
+    const response = await fetch(`${API_BASE_URL}/chunks/enable-all/${docId}`, {
+      method: 'POST'
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  },
+
+  // 全量禁用
+  disableAll: async (docId: number) => {
+    const response = await fetch(`${API_BASE_URL}/chunks/disable-all/${docId}`, {
+      method: 'POST'
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  },
+
+  // 重建向量
+  rebuildVectors: async (docId: number) => {
+    const response = await fetch(`${API_BASE_URL}/chunks/rebuild-vectors/${docId}`, {
+      method: 'POST'
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '重建失败')
     }
     return response.json()
   }
@@ -227,7 +423,7 @@ export const chatAPI = {
     }
 
     return {
-      sessionId: sessionId || data.session_id,
+      sessionId: sessionId ?? data.session_id ?? 0,
       sources,
       searchResults
     }

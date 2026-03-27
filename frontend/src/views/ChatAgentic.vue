@@ -308,6 +308,26 @@
         </div>
       </div>
     </Teleport>
+
+    <!-- 删除确认对话框 -->
+    <Teleport to="body">
+      <div v-if="deletingSessionId" class="dialog-overlay" @click.self="cancelDeleteSession">
+        <div class="dialog dialog-danger">
+          <div class="dialog-header">
+            <h3 class="dialog-title">删除对话</h3>
+            <button class="dialog-close" @click="cancelDeleteSession">&times;</button>
+          </div>
+          <div class="dialog-body">
+            <p class="dialog-message">确定要删除对话 "<strong>{{ deletingSessionName }}</strong>" 吗？</p>
+            <p class="dialog-hint">此操作无法撤销。</p>
+          </div>
+          <div class="dialog-footer">
+            <button class="btn btn-secondary" @click="cancelDeleteSession">取消</button>
+            <button class="btn btn-danger" @click="confirmDeleteSession">删除</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -334,6 +354,10 @@ const { sessions, loading: loadingSessions, loadSessions, deleteSession: deleteS
 const editingSessionId = ref<number>()
 const editingSessionName = ref('')
 const renameInputRef = ref<HTMLInputElement>()
+
+// 删除确认对话框状态
+const deletingSessionId = ref<number>()
+const deletingSessionName = ref('')
 
 // 时间格式化
 const formatTime = (dateStr: string) => {
@@ -479,7 +503,17 @@ const loadSession = async (sessionId: number) => {
 import { chatAPI } from '../api/client'
 
 const handleDeleteSession = async (sessionId: number) => {
-  if (!confirm('确定要删除这个对话吗？')) return
+  // 找到会话名称
+  const session = sessions.value.find(s => s.id === sessionId)
+  deletingSessionId.value = sessionId
+  deletingSessionName.value = session?.title || '这个对话'
+}
+
+const confirmDeleteSession = async () => {
+  if (!deletingSessionId.value) return
+
+  const sessionId = deletingSessionId.value
+  cancelDeleteSession()
 
   const success = await deleteSessionFromList(sessionId)
   if (success && currentSessionId.value === sessionId) {
@@ -487,6 +521,11 @@ const handleDeleteSession = async (sessionId: number) => {
     messages.value = []
     hasUserInteracted.value = false
   }
+}
+
+const cancelDeleteSession = () => {
+  deletingSessionId.value = undefined
+  deletingSessionName.value = ''
 }
 
 const handleRenameSession = async (sessionId: number, title: string) => {
@@ -983,6 +1022,44 @@ onMounted(() => {
   gap: var(--space-3);
   padding: var(--space-4) var(--space-5);
   border-top: 1px solid var(--border-subtle);
+}
+
+/* 删除对话框样式 */
+.dialog-danger .dialog-header {
+  background: rgba(220, 38, 38, 0.08);
+}
+
+.dialog-danger .dialog-title {
+  color: var(--color-danger);
+}
+
+.dialog-message {
+  margin: 0;
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  line-height: 1.6;
+}
+
+.dialog-message strong {
+  color: var(--text-primary);
+  font-weight: var(--font-semibold);
+}
+
+.dialog-hint {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.btn-danger {
+  background: var(--color-danger);
+  color: white;
+  border: 1px solid var(--color-danger);
+}
+
+.btn-danger:hover {
+  background: #b91c1c;
+  border-color: #b91c1c;
 }
 
 /* 移动端适配 */
