@@ -1,10 +1,39 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api'
 
+// 获取认证头
+function getAuthHeaders(): Record<string, string> {
+  const token = localStorage.getItem('token')
+  if (token) {
+    return { 'Authorization': `Bearer ${token}` }
+  }
+  return {}
+}
+
+// 带认证的fetch封装
+async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const headers = {
+    ...options.headers,
+    ...getAuthHeaders()
+  }
+
+  const response = await fetch(url, { ...options, headers })
+
+  // 处理401未授权响应
+  if (response.status === 401) {
+    localStorage.removeItem('token')
+    localStorage.removeItem('refresh_token')
+    localStorage.removeItem('user')
+    window.location.href = '/login'
+  }
+
+  return response
+}
+
 // 知识库API
 export const knowledgeAPI = {
   // 获取统计数据
   getStats: async () => {
-    const response = await fetch(`${API_BASE_URL}/knowledge/stats`)
+    const response = await authFetch(`${API_BASE_URL}/knowledge/stats`)
     if (!response.ok) {
       const error = await response.text()
       throw new Error(error || '请求失败')
@@ -19,7 +48,7 @@ export const knowledgeAPI = {
     if (params.page_size) query.append('page_size', params.page_size.toString())
     if (params.search) query.append('search', params.search)
 
-    const response = await fetch(`${API_BASE_URL}/knowledge?${query}`)
+    const response = await authFetch(`${API_BASE_URL}/knowledge?${query}`)
     if (!response.ok) {
       const error = await response.text()
       throw new Error(error || '请求失败')
@@ -29,7 +58,7 @@ export const knowledgeAPI = {
 
   // 获取所有知识库（兼容旧接口）
   getAll: async () => {
-    const response = await fetch(`${API_BASE_URL}/knowledge`)
+    const response = await authFetch(`${API_BASE_URL}/knowledge`)
     if (!response.ok) {
       const error = await response.text()
       throw new Error(error || '请求失败')
@@ -47,7 +76,7 @@ export const knowledgeAPI = {
     embedding_model?: string
     owner?: string
   }) => {
-    const response = await fetch(`${API_BASE_URL}/knowledge`, {
+    const response = await authFetch(`${API_BASE_URL}/knowledge`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -63,7 +92,7 @@ export const knowledgeAPI = {
 
   // 获取知识库详情
   get: async (id: number) => {
-    const response = await fetch(`${API_BASE_URL}/knowledge/${id}`)
+    const response = await authFetch(`${API_BASE_URL}/knowledge/${id}`)
     if (!response.ok) {
       const error = await response.text()
       throw new Error(error || '请求失败')
@@ -73,7 +102,7 @@ export const knowledgeAPI = {
 
   // 删除知识库
   delete: async (id: number) => {
-    const response = await fetch(`${API_BASE_URL}/knowledge/${id}`, {
+    const response = await authFetch(`${API_BASE_URL}/knowledge/${id}`, {
       method: 'DELETE'
     })
     if (!response.ok) {
@@ -91,7 +120,7 @@ export const knowledgeAPI = {
     if (params.search) query.append('search', params.search)
     if (params.status) query.append('status', params.status)
 
-    const response = await fetch(`${API_BASE_URL}/knowledge/${id}/documents?${query}`)
+    const response = await authFetch(`${API_BASE_URL}/knowledge/${id}/documents?${query}`)
     if (!response.ok) {
       const error = await response.text()
       throw new Error(error || '请求失败')
@@ -108,7 +137,7 @@ export const knowledgeAPI = {
     embedding_model?: string
     owner?: string
   }) => {
-    const response = await fetch(`${API_BASE_URL}/knowledge/${id}`, {
+    const response = await authFetch(`${API_BASE_URL}/knowledge/${id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json'
@@ -135,6 +164,12 @@ export const uploadAPI = {
       const xhr = new XMLHttpRequest()
       xhr.open('POST', `${API_BASE_URL}/upload/${kbId}`)
 
+      // 添加认证头
+      const token = localStorage.getItem('token')
+      if (token) {
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+      }
+
       xhr.upload.onprogress = (event) => {
         if (onProgress && event.lengthComputable) {
           const progress = Math.round((event.loaded / event.total) * 100)
@@ -145,6 +180,12 @@ export const uploadAPI = {
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           resolve(xhr.response ? JSON.parse(xhr.response) : {})
+        } else if (xhr.status === 401) {
+          localStorage.removeItem('token')
+          localStorage.removeItem('refresh_token')
+          localStorage.removeItem('user')
+          window.location.href = '/login'
+          reject(new Error('登录已过期'))
         } else {
           // 尝试解析错误响应
           let errorMsg = '上传文件失败'
@@ -174,7 +215,7 @@ export const uploadAPI = {
 
   // 删除文档
   deleteDocument: async (docId: number) => {
-    const response = await fetch(`${API_BASE_URL}/upload/documents/${docId}`, {
+    const response = await authFetch(`${API_BASE_URL}/upload/documents/${docId}`, {
       method: 'DELETE'
     })
     if (!response.ok) {
@@ -186,7 +227,7 @@ export const uploadAPI = {
 
   // 更新文档
   updateDocument: async (docId: number, data: { filename?: string; source?: string; enabled?: boolean }) => {
-    const response = await fetch(`${API_BASE_URL}/upload/documents/${docId}`, {
+    const response = await authFetch(`${API_BASE_URL}/upload/documents/${docId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -200,7 +241,7 @@ export const uploadAPI = {
 
   // 切换文档启用状态
   toggleDocument: async (docId: number) => {
-    const response = await fetch(`${API_BASE_URL}/upload/documents/${docId}/toggle`, {
+    const response = await authFetch(`${API_BASE_URL}/upload/documents/${docId}/toggle`, {
       method: 'PUT'
     })
     if (!response.ok) {
@@ -220,7 +261,7 @@ export const chunkAPI = {
     if (params.page_size) query.append('page_size', params.page_size.toString())
     if (params.enabled !== undefined) query.append('enabled', params.enabled.toString())
 
-    const response = await fetch(`${API_BASE_URL}/chunks/${docId}?${query}`)
+    const response = await authFetch(`${API_BASE_URL}/chunks/${docId}?${query}`)
     if (!response.ok) {
       const error = await response.text()
       throw new Error(error || '请求失败')
@@ -230,7 +271,7 @@ export const chunkAPI = {
 
   // 创建分块
   create: async (docId: number, content: string) => {
-    const response = await fetch(`${API_BASE_URL}/chunks/${docId}`, {
+    const response = await authFetch(`${API_BASE_URL}/chunks/${docId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content })
@@ -244,7 +285,7 @@ export const chunkAPI = {
 
   // 更新分块
   update: async (chunkId: number, data: { content?: string; enabled?: boolean }) => {
-    const response = await fetch(`${API_BASE_URL}/chunks/${chunkId}`, {
+    const response = await authFetch(`${API_BASE_URL}/chunks/${chunkId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -258,7 +299,7 @@ export const chunkAPI = {
 
   // 删除分块
   delete: async (chunkId: number) => {
-    const response = await fetch(`${API_BASE_URL}/chunks/${chunkId}`, {
+    const response = await authFetch(`${API_BASE_URL}/chunks/${chunkId}`, {
       method: 'DELETE'
     })
     if (!response.ok) {
@@ -270,7 +311,7 @@ export const chunkAPI = {
 
   // 切换分块启用状态
   toggle: async (chunkId: number) => {
-    const response = await fetch(`${API_BASE_URL}/chunks/${chunkId}/toggle`, {
+    const response = await authFetch(`${API_BASE_URL}/chunks/${chunkId}/toggle`, {
       method: 'PUT'
     })
     if (!response.ok) {
@@ -282,7 +323,7 @@ export const chunkAPI = {
 
   // 批量启用
   batchEnable: async (chunkIds: number[]) => {
-    const response = await fetch(`${API_BASE_URL}/chunks/batch-enable`, {
+    const response = await authFetch(`${API_BASE_URL}/chunks/batch-enable`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chunk_ids: chunkIds })
@@ -296,7 +337,7 @@ export const chunkAPI = {
 
   // 批量禁用
   batchDisable: async (chunkIds: number[]) => {
-    const response = await fetch(`${API_BASE_URL}/chunks/batch-disable`, {
+    const response = await authFetch(`${API_BASE_URL}/chunks/batch-disable`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chunk_ids: chunkIds })
@@ -310,7 +351,7 @@ export const chunkAPI = {
 
   // 全量启用
   enableAll: async (docId: number) => {
-    const response = await fetch(`${API_BASE_URL}/chunks/enable-all/${docId}`, {
+    const response = await authFetch(`${API_BASE_URL}/chunks/enable-all/${docId}`, {
       method: 'POST'
     })
     if (!response.ok) {
@@ -322,7 +363,7 @@ export const chunkAPI = {
 
   // 全量禁用
   disableAll: async (docId: number) => {
-    const response = await fetch(`${API_BASE_URL}/chunks/disable-all/${docId}`, {
+    const response = await authFetch(`${API_BASE_URL}/chunks/disable-all/${docId}`, {
       method: 'POST'
     })
     if (!response.ok) {
@@ -334,7 +375,7 @@ export const chunkAPI = {
 
   // 重建向量
   rebuildVectors: async (docId: number) => {
-    const response = await fetch(`${API_BASE_URL}/chunks/rebuild-vectors/${docId}`, {
+    const response = await authFetch(`${API_BASE_URL}/chunks/rebuild-vectors/${docId}`, {
       method: 'POST'
     })
     if (!response.ok) {
@@ -367,7 +408,7 @@ export const chatAPI = {
     },
     onChunk: (message: StreamMessage) => void
   ): Promise<{ sessionId: number; sources?: string[]; searchResults?: any[] }> => {
-    const response = await fetch(`${API_BASE_URL}/chat`, {
+    const response = await authFetch(`${API_BASE_URL}/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -434,7 +475,7 @@ export const chatAPI = {
     const url = sessionType
       ? `${API_BASE_URL}/chat/sessions?session_type=${sessionType}`
       : `${API_BASE_URL}/chat/sessions`
-    const response = await fetch(url)
+    const response = await authFetch(url)
     if (!response.ok) {
       const error = await response.text()
       throw new Error(error || '请求失败')
@@ -444,7 +485,7 @@ export const chatAPI = {
 
   // 获取会话详情
   getSession: async (id: number) => {
-    const response = await fetch(`${API_BASE_URL}/chat/sessions/${id}`)
+    const response = await authFetch(`${API_BASE_URL}/chat/sessions/${id}`)
     if (!response.ok) {
       const error = await response.text()
       throw new Error(error || '请求失败')
@@ -454,7 +495,7 @@ export const chatAPI = {
 
   // 删除会话
   deleteSession: async (id: number) => {
-    const response = await fetch(`${API_BASE_URL}/chat/sessions/${id}`, {
+    const response = await authFetch(`${API_BASE_URL}/chat/sessions/${id}`, {
       method: 'DELETE'
     })
     if (!response.ok) {
@@ -466,7 +507,7 @@ export const chatAPI = {
 
   // 重命名会话
   renameSession: async (id: number, title: string) => {
-    const response = await fetch(`${API_BASE_URL}/chat/sessions/${id}`, {
+    const response = await authFetch(`${API_BASE_URL}/chat/sessions/${id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json'
@@ -485,7 +526,7 @@ export const chatAPI = {
 export const settingsAPI = {
   // 获取设置
   get: async () => {
-    const response = await fetch(`${API_BASE_URL}/settings`)
+    const response = await authFetch(`${API_BASE_URL}/settings`)
     if (!response.ok) {
       const error = await response.text()
       throw new Error(error || '请求失败')
@@ -495,7 +536,7 @@ export const settingsAPI = {
 
   // 保存设置
   save: async (settings: any) => {
-    const response = await fetch(`${API_BASE_URL}/settings`, {
+    const response = await authFetch(`${API_BASE_URL}/settings`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -553,7 +594,7 @@ export const agentAPI = {
     searchResults?: Array<{ title: string; url: string; snippet?: string }>
     sources?: string[]
   }> => {
-    const response = await fetch(`${API_BASE_URL}/chat/agent`, {
+    const response = await authFetch(`${API_BASE_URL}/chat/agent`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -659,7 +700,7 @@ export interface MCPStatus {
 export const mcpAPI = {
   // 获取所有可用工具
   getAllTools: async (): Promise<AllTools> => {
-    const response = await fetch(`${API_BASE_URL}/mcp/tools/all`)
+    const response = await authFetch(`${API_BASE_URL}/mcp/tools/all`)
     if (!response.ok) {
       const error = await response.text()
       throw new Error(error || '请求失败')
@@ -669,7 +710,7 @@ export const mcpAPI = {
 
   // 获取MCP状态
   getStatus: async (): Promise<MCPStatus> => {
-    const response = await fetch(`${API_BASE_URL}/mcp/status`)
+    const response = await authFetch(`${API_BASE_URL}/mcp/status`)
     if (!response.ok) {
       const error = await response.text()
       throw new Error(error || '请求失败')
@@ -679,7 +720,7 @@ export const mcpAPI = {
 
   // 获取服务器列表
   getServers: async (): Promise<MCPServer[]> => {
-    const response = await fetch(`${API_BASE_URL}/mcp/servers`)
+    const response = await authFetch(`${API_BASE_URL}/mcp/servers`)
     if (!response.ok) {
       const error = await response.text()
       throw new Error(error || '请求失败')
@@ -689,7 +730,7 @@ export const mcpAPI = {
 
   // 添加服务器
   addServer: async (config: MCPServerConfig): Promise<MCPServer> => {
-    const response = await fetch(`${API_BASE_URL}/mcp/servers`, {
+    const response = await authFetch(`${API_BASE_URL}/mcp/servers`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -705,7 +746,7 @@ export const mcpAPI = {
 
   // 删除服务器
   removeServer: async (name: string) => {
-    const response = await fetch(`${API_BASE_URL}/mcp/servers/${encodeURIComponent(name)}`, {
+    const response = await authFetch(`${API_BASE_URL}/mcp/servers/${encodeURIComponent(name)}`, {
       method: 'DELETE'
     })
     if (!response.ok) {
@@ -717,7 +758,7 @@ export const mcpAPI = {
 
   // 获取工具列表
   getTools: async (): Promise<MCPTool[]> => {
-    const response = await fetch(`${API_BASE_URL}/mcp/tools`)
+    const response = await authFetch(`${API_BASE_URL}/mcp/tools`)
     if (!response.ok) {
       const error = await response.text()
       throw new Error(error || '请求失败')
@@ -727,7 +768,7 @@ export const mcpAPI = {
 
   // 重新加载MCP服务器
   reload: async () => {
-    const response = await fetch(`${API_BASE_URL}/mcp/reload`, {
+    const response = await authFetch(`${API_BASE_URL}/mcp/reload`, {
       method: 'POST'
     })
     if (!response.ok) {
@@ -782,7 +823,7 @@ export const multiAgentAPI = {
     sources?: string[]
     searchResults?: Array<{ title: string; url: string; snippet?: string }>
   }> => {
-    const response = await fetch(`${API_BASE_URL}/chat/multi-agent`, {
+    const response = await authFetch(`${API_BASE_URL}/chat/multi-agent`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -844,7 +885,7 @@ export const multiAgentAPI = {
 
   // 获取Agent类型列表
   getAgentTypes: async () => {
-    const response = await fetch(`${API_BASE_URL}/agents/types/list`)
+    const response = await authFetch(`${API_BASE_URL}/agents/types/list`)
     if (!response.ok) {
       const error = await response.text()
       throw new Error(error || '请求失败')
@@ -854,7 +895,7 @@ export const multiAgentAPI = {
 
   // 获取所有Agent配置
   getAgents: async () => {
-    const response = await fetch(`${API_BASE_URL}/agents`)
+    const response = await authFetch(`${API_BASE_URL}/agents`)
     if (!response.ok) {
       const error = await response.text()
       throw new Error(error || '请求失败')
@@ -872,7 +913,7 @@ export const multiAgentAPI = {
     model_name?: string
     temperature?: number
   }) => {
-    const response = await fetch(`${API_BASE_URL}/agents`, {
+    const response = await authFetch(`${API_BASE_URL}/agents`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -896,7 +937,7 @@ export const multiAgentAPI = {
     temperature?: number
     is_active?: boolean
   }) => {
-    const response = await fetch(`${API_BASE_URL}/agents/${id}`, {
+    const response = await authFetch(`${API_BASE_URL}/agents/${id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json'
@@ -912,7 +953,7 @@ export const multiAgentAPI = {
 
   // 删除Agent
   deleteAgent: async (id: number) => {
-    const response = await fetch(`${API_BASE_URL}/agents/${id}`, {
+    const response = await authFetch(`${API_BASE_URL}/agents/${id}`, {
       method: 'DELETE'
     })
     if (!response.ok) {

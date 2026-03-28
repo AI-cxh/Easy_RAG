@@ -6,7 +6,7 @@ from typing import List, AsyncGenerator
 import json
 
 from app.models.database import get_db
-from app.models.models import ChatSession, ChatMessage
+from app.models.models import ChatSession, ChatMessage, User
 from app.models.schemas import (
     ChatRequest, ChatResponse, ChatSessionResponse, ChatSessionListResponse,
     SessionRenameRequest, AgentChatRequest, AgentStepResponse
@@ -15,6 +15,7 @@ from app.services.rag import rag_service
 from app.services.search import get_search_service
 from app.services.embedding import embedding_service
 from app.services.agent import agent_service
+from app.services.auth import get_current_user, require_user
 
 
 def parse_message_metadata(msg: ChatMessage) -> dict:
@@ -88,7 +89,11 @@ async def stream_response(
 
 
 @router.post("/chat")
-async def chat(request: ChatRequest, db: Session = Depends(get_db)):
+async def chat(
+    request: ChatRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user)
+):
     """
     聊天接口 - 支持流式响应
 
@@ -103,10 +108,14 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
             session = db.query(ChatSession).filter(ChatSession.id == request.session_id).first()
             if not session:
                 raise HTTPException(status_code=404, detail="会话不存在")
+            # 权限检查
+            if session.user_id and session.user_id != user.id and user.role != "admin":
+                raise HTTPException(status_code=403, detail="无权访问此会话")
         else:
             session = ChatSession(
                 title=request.message[:30] + ("..." if len(request.message) > 30 else ""),
-                session_type=request.session_type
+                session_type=request.session_type,
+                user_id=user.id
             )
             db.add(session)
             db.commit()
@@ -170,21 +179,36 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/chat/sessions", response_model=ChatSessionListResponse)
-async def get_sessions(session_type: str = None, db: Session = Depends(get_db)):
+async def get_sessions(
+    session_type: str = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user)
+):
     """获取所有聊天会话，可选按类型过滤"""
     query = db.query(ChatSession)
     if session_type:
         query = query.filter(ChatSession.session_type == session_type)
+    # 非管理员只能看自己的会话
+    if user.role != "admin":
+        query = query.filter(ChatSession.user_id == user.id)
     sessions = query.order_by(ChatSession.created_at.desc()).all()
     return ChatSessionListResponse(sessions=sessions)
 
 
 @router.get("/chat/sessions/{session_id}", response_model=ChatSessionResponse)
-async def get_session(session_id: int, db: Session = Depends(get_db)):
+async def get_session(
+    session_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user)
+):
     """获取指定会话的详细信息"""
     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="会话不存在")
+
+    # 权限检查
+    if session.user_id and session.user_id != user.id and user.role != "admin":
+        raise HTTPException(status_code=403, detail="无权访问此会话")
 
     # 获取会话的消息
     messages = db.query(ChatMessage).filter(
@@ -212,22 +236,37 @@ async def get_session(session_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/chat/sessions/{session_id}")
-async def delete_session(session_id: int, db: Session = Depends(get_db)):
+async def delete_session(
+    session_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user)
+):
     """删除指定会话"""
     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="会话不存在")
+    # 权限检查
+    if session.user_id and session.user_id != user.id and user.role != "admin":
+        raise HTTPException(status_code=403, detail="无权删除此会话")
     db.delete(session)
     db.commit()
     return {"message": "会话已删除"}
 
 
 @router.put("/chat/sessions/{session_id}")
-async def rename_session(session_id: int, request: SessionRenameRequest, db: Session = Depends(get_db)):
+async def rename_session(
+    session_id: int,
+    request: SessionRenameRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user)
+):
     """重命名会话"""
     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="会话不存在")
+    # 权限检查
+    if session.user_id and session.user_id != user.id and user.role != "admin":
+        raise HTTPException(status_code=403, detail="无权修改此会话")
     session.title = request.title
     db.commit()
     return {"message": "会话已重命名", "id": session_id, "title": request.title}
@@ -320,7 +359,11 @@ async def stream_agent_response(
 
 
 @router.post("/chat/agent")
-async def chat_with_agent(request: AgentChatRequest, db: Session = Depends(get_db)):
+async def chat_with_agent(
+    request: AgentChatRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user)
+):
     """
     Agent驱动的聊天接口
 
@@ -335,10 +378,14 @@ async def chat_with_agent(request: AgentChatRequest, db: Session = Depends(get_d
             session = db.query(ChatSession).filter(ChatSession.id == request.session_id).first()
             if not session:
                 raise HTTPException(status_code=404, detail="会话不存在")
+            # 权限检查
+            if session.user_id and session.user_id != user.id and user.role != "admin":
+                raise HTTPException(status_code=403, detail="无权访问此会话")
         else:
             session = ChatSession(
                 title=request.message[:30] + ("..." if len(request.message) > 30 else ""),
-                session_type="agentic"
+                session_type="agentic",
+                user_id=user.id
             )
             db.add(session)
             db.commit()

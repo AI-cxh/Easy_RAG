@@ -4,8 +4,8 @@ from sqlalchemy.orm import Session
 from typing import List
 import json
 
-from app.models.database import SessionLocal
-from app.models.models import AgentConfig, AgentExecution
+from app.models.database import SessionLocal, get_db
+from app.models.models import AgentConfig, AgentExecution, User
 from app.models.schemas import (
     AgentConfigCreate,
     AgentConfigUpdate,
@@ -23,11 +23,12 @@ from app.services.multi_agent import (
     agent_registry,
     AgentType
 )
+from app.services.auth import get_current_user, require_user
 
 router = APIRouter()
 
 
-def get_db():
+def get_db_local():
     """获取数据库会话"""
     db = SessionLocal()
     try:
@@ -39,7 +40,10 @@ def get_db():
 # ==================== Agent配置管理 ====================
 
 @router.get("/agents", response_model=List[AgentConfigResponse])
-async def list_agents(db: Session = Depends(get_db)):
+async def list_agents(
+    db: Session = Depends(get_db_local),
+    user: User = Depends(get_current_user)
+):
     """获取所有Agent配置"""
     agents = db.query(AgentConfig).all()
     result = []
@@ -62,7 +66,11 @@ async def list_agents(db: Session = Depends(get_db)):
 
 
 @router.post("/agents", response_model=AgentConfigResponse)
-async def create_agent(config: AgentConfigCreate, db: Session = Depends(get_db)):
+async def create_agent(
+    config: AgentConfigCreate,
+    db: Session = Depends(get_db_local),
+    user: User = Depends(require_user)
+):
     """创建自定义Agent"""
     # 检查名称是否已存在
     existing = db.query(AgentConfig).filter(AgentConfig.name == config.name).first()
@@ -101,7 +109,11 @@ async def create_agent(config: AgentConfigCreate, db: Session = Depends(get_db))
 
 
 @router.get("/agents/{agent_id}", response_model=AgentConfigResponse)
-async def get_agent(agent_id: int, db: Session = Depends(get_db)):
+async def get_agent(
+    agent_id: int,
+    db: Session = Depends(get_db_local),
+    user: User = Depends(get_current_user)
+):
     """获取单个Agent配置"""
     agent = db.query(AgentConfig).filter(AgentConfig.id == agent_id).first()
     if not agent:
@@ -127,7 +139,8 @@ async def get_agent(agent_id: int, db: Session = Depends(get_db)):
 async def update_agent(
     agent_id: int,
     config: AgentConfigUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_local),
+    user: User = Depends(require_user)
 ):
     """更新Agent配置"""
     agent = db.query(AgentConfig).filter(AgentConfig.id == agent_id).first()
@@ -178,7 +191,11 @@ async def update_agent(
 
 
 @router.delete("/agents/{agent_id}")
-async def delete_agent(agent_id: int, db: Session = Depends(get_db)):
+async def delete_agent(
+    agent_id: int,
+    db: Session = Depends(get_db_local),
+    user: User = Depends(require_user)
+):
     """删除Agent"""
     agent = db.query(AgentConfig).filter(AgentConfig.id == agent_id).first()
     if not agent:
@@ -192,7 +209,11 @@ async def delete_agent(agent_id: int, db: Session = Depends(get_db)):
 # ==================== Agent执行记录 ====================
 
 @router.get("/agents/executions/{session_id}", response_model=List[AgentExecutionResponse])
-async def get_session_executions(session_id: int, db: Session = Depends(get_db)):
+async def get_session_executions(
+    session_id: int,
+    db: Session = Depends(get_db_local),
+    user: User = Depends(get_current_user)
+):
     """获取会话的Agent执行记录"""
     executions = db.query(AgentExecution).filter(
         AgentExecution.session_id == session_id
@@ -221,7 +242,8 @@ async def get_session_executions(session_id: int, db: Session = Depends(get_db))
 @router.post("/chat/multi-agent")
 async def multi_agent_chat(
     request: MultiAgentChatRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user)
 ):
     """
     多Agent协同聊天（流式响应）
@@ -249,11 +271,16 @@ async def multi_agent_chat(
         session = None
         if request.session_id:
             session = db.query(ChatSession).filter(ChatSession.id == request.session_id).first()
+            # 权限检查
+            if session and session.user_id and session.user_id != user.id and user.role != "admin":
+                yield f"data: {json.dumps({'type': 'error', 'content': '无权访问此会话'}, ensure_ascii=False)}\n\n"
+                return
 
         if not session:
             session = ChatSession(
                 title=request.message[:50] + "..." if len(request.message) > 50 else request.message,
-                session_type="multi_agent"
+                session_type="multi_agent",
+                user_id=user.id
             )
             db.add(session)
             db.commit()

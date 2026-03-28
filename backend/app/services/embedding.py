@@ -338,7 +338,7 @@ class EmbeddingService:
 
     def set_chunks_enabled_by_doc_id(self, kb_id: int, doc_id: int, enabled: bool) -> bool:
         """
-        设置文档所有分块的启用状态（通过重建向量）
+        设置文档所有分块的启用状态
 
         Args:
             kb_id: 知识库ID
@@ -353,19 +353,23 @@ class EmbeddingService:
             # 获取所有属于该文档的分块
             all_items = collection.get()
 
+            ids_to_update = []
+            metadatas_to_update = []
+
             for i, meta in enumerate(all_items['metadatas']):
                 if meta.get('doc_id') == doc_id:
                     chunk_id = all_items['ids'][i]
-                    document = all_items['documents'][i]
                     new_meta = dict(meta)
                     new_meta['enabled'] = enabled
+                    ids_to_update.append(chunk_id)
+                    metadatas_to_update.append(new_meta)
 
-                    # 使用 upsert 更新
-                    collection.upsert(
-                        ids=[chunk_id],
-                        documents=[document],
-                        metadatas=[new_meta]
-                    )
+            if ids_to_update:
+                # 使用 update 只更新 metadata，不重新生成嵌入向量
+                collection.update(
+                    ids=ids_to_update,
+                    metadatas=metadatas_to_update
+                )
 
             return True
         except Exception as e:

@@ -21,22 +21,72 @@
         <path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9H9V9h10v2zm-4 4H9v-2h6v2zm4-8H9V5h10v2z"/>
       </svg>
     </router-link>
+    <router-link v-if="isAdmin" to="/users" class="nav-rail-btn" :class="{ active: isActive('/users') }" title="用户管理">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+      </svg>
+    </router-link>
     <router-link to="/settings" class="nav-rail-btn" title="设置">
       <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
         <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
       </svg>
     </router-link>
+
+    <!-- 底部用户区域 -->
+    <div class="nav-spacer"></div>
+    <div class="nav-divider"></div>
+    <div class="user-section">
+      <div class="user-avatar" :title="user?.username" @click="showUserMenu = !showUserMenu">
+        {{ userInitial }}
+      </div>
+      <div v-if="showUserMenu" class="user-menu">
+        <div class="user-info">
+          <div class="user-name">{{ user?.username }}</div>
+          <div class="user-role">{{ user?.role === 'admin' ? '管理员' : '普通用户' }}</div>
+        </div>
+        <button class="menu-item" @click="handleLogout">
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
+          </svg>
+          退出登录
+        </button>
+      </div>
+    </div>
   </nav>
 </template>
 
 <script setup lang="ts">
-import { useRoute } from 'vue-router'
+import { ref, computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useAuth } from '../composables/useAuth'
 
 const route = useRoute()
+const router = useRouter()
+const { user, isAdmin, logout } = useAuth()
+
+const showUserMenu = ref(false)
 
 const isActive = (path: string) => {
   return route.path === path || route.path.startsWith(path + '/')
 }
+
+const userInitial = computed(() => {
+  return user.value?.username?.charAt(0).toUpperCase() || '?'
+})
+
+function handleLogout() {
+  showUserMenu.value = false
+  logout()
+  router.push('/login')
+}
+
+// 点击外部关闭菜单
+document.addEventListener('click', (e) => {
+  const target = e.target as HTMLElement
+  if (!target.closest('.user-section')) {
+    showUserMenu.value = false
+  }
+})
 </script>
 
 <style scoped>
@@ -112,5 +162,100 @@ const isActive = (path: string) => {
   width: 24px;
   background: var(--border-subtle);
   margin: var(--space-2) 0;
+}
+
+.nav-spacer {
+  flex: 1;
+}
+
+.user-section {
+  position: relative;
+}
+
+.user-avatar {
+  width: clamp(36px, 5vw, 44px);
+  height: clamp(36px, 5vw, 44px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: var(--radius-lg);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: transform var(--duration-fast);
+}
+
+.user-avatar:hover {
+  transform: scale(1.05);
+}
+
+.user-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  min-width: 160px;
+  overflow: hidden;
+  animation: slideUp var(--duration-fast) var(--ease-soft);
+}
+
+.user-info {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.user-name {
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+}
+
+.user-role {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: all var(--duration-fast);
+  text-align: left;
+}
+
+.menu-item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.menu-item svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
 }
 </style>

@@ -4,11 +4,12 @@ from sqlalchemy.orm import Session
 from typing import List as ListType
 
 from app.models.database import get_db
-from app.models.models import Document, Chunk, KnowledgeBase
+from app.models.models import Document, Chunk, KnowledgeBase, User
 from app.models.schemas import (
     ChunkResponse, ChunkListResponse, ChunkCreate, ChunkUpdate, ChunkBatchRequest
 )
 from app.services.embedding import embedding_service
+from app.services.auth import get_current_user, require_user
 import tiktoken
 
 
@@ -23,18 +24,30 @@ def count_tokens(text: str) -> int:
     return len(tokenizer.encode(text))
 
 
+def check_doc_permission(document: Document, user: User, db: Session) -> KnowledgeBase:
+    """检查文档权限，返回知识库"""
+    knowledge_base = db.query(KnowledgeBase).filter(KnowledgeBase.id == document.kb_id).first()
+    if knowledge_base and user.role != "admin" and knowledge_base.user_id != user.id:
+        raise HTTPException(status_code=403, detail="无权访问此文档")
+    return knowledge_base
+
+
 @router.get("/chunks/{doc_id}", response_model=ChunkListResponse)
 async def get_chunks(
     doc_id: int,
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(10, ge=1, le=100, description="每页数量"),
     enabled: bool = Query(None, description="启用状态筛选"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
 ):
     """获取文档的分块列表（分页）"""
     document = db.query(Document).filter(Document.id == doc_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="文档不存在")
+
+    # 权限检查
+    check_doc_permission(document, user, db)
 
     query = db.query(Chunk).filter(Chunk.doc_id == doc_id)
 
@@ -57,11 +70,19 @@ async def get_chunks(
 
 
 @router.post("/chunks/{doc_id}", response_model=ChunkResponse)
-async def create_chunk(doc_id: int, chunk_data: ChunkCreate, db: Session = Depends(get_db)):
+async def create_chunk(
+    doc_id: int,
+    chunk_data: ChunkCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user)
+):
     """新建分块"""
     document = db.query(Document).filter(Document.id == doc_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="文档不存在")
+
+    # 权限检查
+    check_doc_permission(document, user, db)
 
     # 获取当前最大排序号
     max_order = db.query(Chunk).filter(Chunk.doc_id == doc_id).count()
@@ -99,13 +120,20 @@ async def create_chunk(doc_id: int, chunk_data: ChunkCreate, db: Session = Depen
 
 
 @router.put("/chunks/{chunk_id}", response_model=ChunkResponse)
-async def update_chunk(chunk_id: int, chunk_data: ChunkUpdate, db: Session = Depends(get_db)):
+async def update_chunk(
+    chunk_id: int,
+    chunk_data: ChunkUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user)
+):
     """编辑分块"""
     chunk = db.query(Chunk).filter(Chunk.id == chunk_id).first()
     if not chunk:
         raise HTTPException(status_code=404, detail="分块不存在")
 
     document = db.query(Document).filter(Document.id == chunk.doc_id).first()
+    # 权限检查
+    check_doc_permission(document, user, db)
 
     if chunk_data.content is not None:
         chunk.content = chunk_data.content
@@ -133,13 +161,19 @@ async def update_chunk(chunk_id: int, chunk_data: ChunkUpdate, db: Session = Dep
 
 
 @router.delete("/chunks/{chunk_id}")
-async def delete_chunk(chunk_id: int, db: Session = Depends(get_db)):
+async def delete_chunk(
+    chunk_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user)
+):
     """删除分块"""
     chunk = db.query(Chunk).filter(Chunk.id == chunk_id).first()
     if not chunk:
         raise HTTPException(status_code=404, detail="分块不存在")
 
     document = db.query(Document).filter(Document.id == chunk.doc_id).first()
+    # 权限检查
+    check_doc_permission(document, user, db)
     kb_id = document.kb_id
 
     db.delete(chunk)
@@ -156,11 +190,19 @@ async def delete_chunk(chunk_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/chunks/{chunk_id}/toggle", response_model=ChunkResponse)
-async def toggle_chunk(chunk_id: int, db: Session = Depends(get_db)):
+async def toggle_chunk(
+    chunk_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user)
+):
     """切换分块启用状态"""
     chunk = db.query(Chunk).filter(Chunk.id == chunk_id).first()
     if not chunk:
         raise HTTPException(status_code=404, detail="分块不存在")
+
+    document = db.query(Document).filter(Document.id == chunk.doc_id).first()
+    # 权限检查
+    check_doc_permission(document, user, db)
 
     new_enabled = not chunk.enabled
     chunk.enabled = new_enabled
@@ -168,7 +210,6 @@ async def toggle_chunk(chunk_id: int, db: Session = Depends(get_db)):
     db.refresh(chunk)
 
     # 同步更新 ChromaDB
-    document = db.query(Document).filter(Document.id == chunk.doc_id).first()
     if document:
         embedding_service.set_chunks_enabled_by_doc_id(document.kb_id, chunk.doc_id, new_enabled)
 
@@ -176,11 +217,21 @@ async def toggle_chunk(chunk_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/chunks/batch-enable")
-async def batch_enable_chunks(request: ChunkBatchRequest, db: Session = Depends(get_db)):
+async def batch_enable_chunks(
+    request: ChunkBatchRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user)
+):
     """批量启用分块"""
     chunks = db.query(Chunk).filter(Chunk.id.in_(request.chunk_ids)).all()
     if not chunks:
         raise HTTPException(status_code=404, detail="未找到分块")
+
+    # 权限检查
+    for chunk in chunks:
+        document = db.query(Document).filter(Document.id == chunk.doc_id).first()
+        if document:
+            check_doc_permission(document, user, db)
 
     for chunk in chunks:
         chunk.enabled = True
@@ -198,11 +249,21 @@ async def batch_enable_chunks(request: ChunkBatchRequest, db: Session = Depends(
 
 
 @router.post("/chunks/batch-disable")
-async def batch_disable_chunks(request: ChunkBatchRequest, db: Session = Depends(get_db)):
+async def batch_disable_chunks(
+    request: ChunkBatchRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user)
+):
     """批量禁用分块"""
     chunks = db.query(Chunk).filter(Chunk.id.in_(request.chunk_ids)).all()
     if not chunks:
         raise HTTPException(status_code=404, detail="未找到分块")
+
+    # 权限检查
+    for chunk in chunks:
+        document = db.query(Document).filter(Document.id == chunk.doc_id).first()
+        if document:
+            check_doc_permission(document, user, db)
 
     for chunk in chunks:
         chunk.enabled = False
@@ -220,11 +281,18 @@ async def batch_disable_chunks(request: ChunkBatchRequest, db: Session = Depends
 
 
 @router.post("/chunks/enable-all/{doc_id}")
-async def enable_all_chunks(doc_id: int, db: Session = Depends(get_db)):
+async def enable_all_chunks(
+    doc_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user)
+):
     """全量启用文档的所有分块"""
     document = db.query(Document).filter(Document.id == doc_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="文档不存在")
+
+    # 权限检查
+    check_doc_permission(document, user, db)
 
     db.query(Chunk).filter(Chunk.doc_id == doc_id).update({"enabled": True})
     db.commit()
@@ -237,11 +305,18 @@ async def enable_all_chunks(doc_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/chunks/disable-all/{doc_id}")
-async def disable_all_chunks(doc_id: int, db: Session = Depends(get_db)):
+async def disable_all_chunks(
+    doc_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user)
+):
     """全量禁用文档的所有分块"""
     document = db.query(Document).filter(Document.id == doc_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="文档不存在")
+
+    # 权限检查
+    check_doc_permission(document, user, db)
 
     db.query(Chunk).filter(Chunk.doc_id == doc_id).update({"enabled": False})
     db.commit()
@@ -254,11 +329,18 @@ async def disable_all_chunks(doc_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/chunks/rebuild-vectors/{doc_id}")
-async def rebuild_vectors(doc_id: int, db: Session = Depends(get_db)):
+async def rebuild_vectors(
+    doc_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user)
+):
     """重建文档的向量"""
     document = db.query(Document).filter(Document.id == doc_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="文档不存在")
+
+    # 权限检查
+    check_doc_permission(document, user, db)
 
     # 获取所有启用的分块
     chunks = db.query(Chunk).filter(Chunk.doc_id == doc_id, Chunk.enabled == True).order_by(Chunk.sort_order).all()

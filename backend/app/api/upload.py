@@ -4,10 +4,11 @@ from sqlalchemy.orm import Session
 import os
 
 from app.models.database import get_db
-from app.models.models import KnowledgeBase, Document, Chunk
+from app.models.models import KnowledgeBase, Document, Chunk, User
 from app.models.schemas import DocumentResponse, DocumentListResponse, DocumentUpdateRequest
 from app.utils.file_parser import FileParser
 from app.services.embedding import embedding_service
+from app.services.auth import get_current_user, require_user
 from app.config import settings
 import tiktoken
 
@@ -39,11 +40,18 @@ def get_file_type(filename: str) -> str:
     return type_map.get(ext, 'unknown')
 
 
+def check_kb_permission(knowledge_base: KnowledgeBase, user: User) -> None:
+    """检查知识库权限"""
+    if user.role != "admin" and knowledge_base.user_id != user.id:
+        raise HTTPException(status_code=403, detail="无权访问此知识库")
+
+
 @router.post("/upload/{kb_id}", response_model=DocumentResponse)
 async def upload_file(
     kb_id: int,
     file: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user)
 ):
     """
     上传文件到指定知识库
@@ -57,6 +65,9 @@ async def upload_file(
     knowledge_base = db.query(KnowledgeBase).filter(KnowledgeBase.id == kb_id).first()
     if not knowledge_base:
         raise HTTPException(status_code=404, detail="知识库不存在")
+
+    # 权限检查
+    check_kb_permission(knowledge_base, user)
 
     # 检查文件格式
     if not FileParser.is_supported(file.filename):
@@ -149,7 +160,11 @@ async def upload_file(
 
 
 @router.delete("/upload/documents/{doc_id}")
-async def delete_document(doc_id: int, db: Session = Depends(get_db)):
+async def delete_document(
+    doc_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user)
+):
     """
     删除文档
 
@@ -158,6 +173,10 @@ async def delete_document(doc_id: int, db: Session = Depends(get_db)):
     document = db.query(Document).filter(Document.id == doc_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="文档不存在")
+
+    # 权限检查
+    knowledge_base = db.query(KnowledgeBase).filter(KnowledgeBase.id == document.kb_id).first()
+    check_kb_permission(knowledge_base, user)
 
     try:
         # 删除文件
@@ -183,11 +202,20 @@ async def delete_document(doc_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/upload/documents/{doc_id}", response_model=DocumentResponse)
-async def update_document(doc_id: int, request: DocumentUpdateRequest, db: Session = Depends(get_db)):
+async def update_document(
+    doc_id: int,
+    request: DocumentUpdateRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user)
+):
     """更新文档信息"""
     document = db.query(Document).filter(Document.id == doc_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="文档不存在")
+
+    # 权限检查
+    knowledge_base = db.query(KnowledgeBase).filter(KnowledgeBase.id == document.kb_id).first()
+    check_kb_permission(knowledge_base, user)
 
     if request.filename is not None:
         document.filename = request.filename
@@ -202,11 +230,19 @@ async def update_document(doc_id: int, request: DocumentUpdateRequest, db: Sessi
 
 
 @router.put("/upload/documents/{doc_id}/toggle", response_model=DocumentResponse)
-async def toggle_document(doc_id: int, db: Session = Depends(get_db)):
+async def toggle_document(
+    doc_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user)
+):
     """切换文档启用状态"""
     document = db.query(Document).filter(Document.id == doc_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="文档不存在")
+
+    # 权限检查
+    knowledge_base = db.query(KnowledgeBase).filter(KnowledgeBase.id == document.kb_id).first()
+    check_kb_permission(knowledge_base, user)
 
     new_enabled = not document.enabled
     document.enabled = new_enabled

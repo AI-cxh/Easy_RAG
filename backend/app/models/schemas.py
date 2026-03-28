@@ -1,6 +1,54 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional
 from datetime import datetime
+
+
+# User Schemas
+class UserCreate(BaseModel):
+    username: str = Field(..., min_length=3, max_length=50, description="用户名")
+    email: EmailStr = Field(..., description="邮箱")
+    password: str = Field(..., min_length=6, max_length=100, description="密码")
+
+
+class UserLogin(BaseModel):
+    username: str = Field(..., description="用户名")
+    password: str = Field(..., description="密码")
+
+
+class UserResponse(BaseModel):
+    id: int
+    username: str
+    email: str
+    role: str
+    status: str
+    created_at: datetime
+    approved_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class UserListResponse(BaseModel):
+    items: List[UserResponse]
+    total: int
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    user: UserResponse
+
+
+class PasswordChange(BaseModel):
+    old_password: str = Field(..., description="旧密码")
+    new_password: str = Field(..., min_length=6, max_length=100, description="新密码")
+
+
+class AdminInit(BaseModel):
+    username: str = Field(..., min_length=3, max_length=50, description="用户名")
+    email: EmailStr = Field(..., description="邮箱")
+    password: str = Field(..., min_length=6, max_length=100, description="密码")
 
 
 # KnowledgeBase Schemas
@@ -21,6 +69,7 @@ class KnowledgeBaseResponse(BaseModel):
     chunk_overlap: int = 200
     embedding_model: str = "text-embedding-ada-002"
     owner: str = ""
+    user_id: Optional[int] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 
@@ -37,6 +86,7 @@ class KnowledgeBaseListItem(BaseModel):
     chunk_overlap: int = 200
     embedding_model: str = "text-embedding-ada-002"
     owner: str = ""
+    user_id: Optional[int] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
     doc_count: int = 0
@@ -174,6 +224,7 @@ class ChatSessionResponse(BaseModel):
     id: int
     title: str
     session_type: str = "rag"  # rag, agentic, multi_agent
+    user_id: Optional[int] = None
     created_at: datetime
     messages: List[ChatMessageResponse] = []
 

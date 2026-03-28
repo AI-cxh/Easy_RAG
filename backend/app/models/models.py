@@ -5,6 +5,25 @@ from sqlalchemy.sql import func
 from app.models.database import Base
 
 
+class User(Base):
+    """用户模型"""
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(50), unique=True, nullable=False, index=True)
+    email = Column(String(100), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)
+    role = Column(String(20), default="user")  # "admin" or "user"
+    status = Column(String(20), default="pending")  # "pending", "approved", "rejected"
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    approved_at = Column(DateTime(timezone=True))
+    approved_by = Column(Integer, ForeignKey("users.id"))
+
+    # 关系
+    knowledge_bases = relationship("KnowledgeBase", back_populates="user", foreign_keys="KnowledgeBase.user_id")
+    chat_sessions = relationship("ChatSession", back_populates="user")
+
+
 class KnowledgeBase(Base):
     """知识库模型"""
     __tablename__ = "knowledge_bases"
@@ -18,11 +37,13 @@ class KnowledgeBase(Base):
     # 新增字段
     embedding_model = Column(String(255), default="text-embedding-ada-002")
     owner = Column(String(100), default="")
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # 关系
     documents = relationship("Document", back_populates="knowledge_base", cascade="all, delete-orphan")
+    user = relationship("User", back_populates="knowledge_bases", foreign_keys=[user_id])
 
 
 class Document(Base):
@@ -74,10 +95,12 @@ class ChatSession(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(255), nullable=False, default="新对话")
     session_type = Column(String(20), default="rag")  # rag, agentic, multi_agent
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # 关系
     messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
+    user = relationship("User", back_populates="chat_sessions")
 
 
 class ChatMessage(Base):

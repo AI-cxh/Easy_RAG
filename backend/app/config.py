@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     AGENT_MAX_ITERATIONS: int = 10  # Agent最大迭代次数
     AGENT_VERBOSE: bool = False     # 是否输出详细日志
 
+    # JWT认证配置
+    JWT_SECRET_KEY: str = "your-secret-key-change-in-production"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24小时
+    JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+
     # MCP服务器配置
     # 示例配置格式:
     # MCP_SERVERS = [

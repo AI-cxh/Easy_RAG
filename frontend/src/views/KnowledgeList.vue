@@ -98,7 +98,7 @@
                   {{ kb.name }}
                 </router-link>
               </td>
-              <td>{{ kb.embedding_model || 'text-embedding-ada-002' }}</td>
+              <td>{{ kb.embedding_model || 'BAAI/bge-m3' }}</td>
               <td>
                 <span class="tag tag-primary">kb_{{ kb.id }}</span>
               </td>
@@ -113,7 +113,7 @@
                       <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
                     </svg>
                   </button>
-                  <button class="btn-icon btn-icon-sm delete-btn" @click="deleteKb(kb.id)" title="删除">
+                  <button class="btn-icon btn-icon-sm delete-btn" @click="confirmDeleteKb(kb)" title="删除">
                     <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                       <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
                     </svg>
@@ -166,7 +166,7 @@
             </div>
             <div class="form-group">
               <label class="form-label">Embedding 模型</label>
-              <input v-model="newKbForm.embedding_model" type="text" class="input" placeholder="text-embedding-ada-002" />
+              <input v-model="newKbForm.embedding_model" type="text" class="input" placeholder="BAAI/bge-m3" />
             </div>
             <div class="form-group">
               <label class="form-label">负责人</label>
@@ -226,6 +226,40 @@
         </div>
       </div>
     </Teleport>
+
+    <!-- 删除确认对话框 -->
+    <Teleport to="body">
+      <div v-if="deletingKb" class="dialog-overlay" @click.self="cancelDelete">
+        <div class="dialog dialog-confirm">
+          <div class="dialog-header">
+            <h3 class="dialog-title">
+              <svg class="dialog-icon warning" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+              </svg>
+              确认删除
+            </h3>
+            <button class="dialog-close" @click="cancelDelete">&times;</button>
+          </div>
+          <div class="dialog-body">
+            <p class="confirm-message">
+              确定要删除知识库 <strong>{{ deletingKb.name }}</strong> 吗？
+            </p>
+            <p class="confirm-warning">
+              <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
+              </svg>
+              此操作将同时删除该知识库下的所有文档和分块数据，且无法恢复。
+            </p>
+          </div>
+          <div class="dialog-footer">
+            <button class="btn btn-secondary" @click="cancelDelete">取消</button>
+            <button class="btn btn-danger" @click="executeDelete" :disabled="deleting">
+              {{ deleting ? '删除中...' : '确认删除' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -270,7 +304,7 @@ const newKbForm = ref({
   description: '',
   chunk_size: 1000,
   chunk_overlap: 200,
-  embedding_model: 'text-embedding-ada-002',
+  embedding_model: 'BAAI/bge-m3',
   owner: ''
 })
 
@@ -281,6 +315,9 @@ const editingChunkSize = ref(1000)
 const editingChunkOverlap = ref(200)
 const editingEmbeddingModel = ref('')
 const editingOwner = ref('')
+
+const deletingKb = ref<KnowledgeBase | null>(null)
+const deleting = ref(false)
 
 const loadStats = async () => {
   try {
@@ -409,12 +446,22 @@ const saveKb = async () => {
   }
 }
 
-const deleteKb = async (id: number) => {
-  if (!confirm('确定要删除该知识库及其所有文档吗？')) return
+const confirmDeleteKb = (kb: KnowledgeBase) => {
+  deletingKb.value = kb
+}
 
+const cancelDelete = () => {
+  deletingKb.value = null
+}
+
+const executeDelete = async () => {
+  if (!deletingKb.value) return
+
+  deleting.value = true
   try {
-    const response = await fetch(`${API_BASE}/knowledge/${id}`, { method: 'DELETE' })
+    const response = await fetch(`${API_BASE}/knowledge/${deletingKb.value.id}`, { method: 'DELETE' })
     if (response.ok) {
+      deletingKb.value = null
       await loadStats()
       await loadKnowledgeBases()
     } else {
@@ -424,6 +471,8 @@ const deleteKb = async (id: number) => {
   } catch (error) {
     console.error('Failed to delete knowledge base:', error)
     alert('删除失败')
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -657,5 +706,70 @@ onMounted(() => {
 
 .dialog-wide {
   max-width: 520px;
+}
+
+/* 删除确认对话框 */
+.dialog-confirm {
+  max-width: 420px;
+}
+
+.dialog-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.dialog-icon {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+}
+
+.dialog-icon.warning {
+  fill: var(--color-warning, #f59e0b);
+}
+
+.confirm-message {
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  margin: 0 0 var(--space-4) 0;
+}
+
+.confirm-message strong {
+  color: var(--color-primary);
+}
+
+.confirm-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-warning, #f59e0b);
+  background: rgba(245, 158, 11, 0.1);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  margin: 0;
+}
+
+.confirm-warning svg {
+  width: 16px;
+  height: 16px;
+  fill: var(--color-warning, #f59e0b);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.btn-danger {
+  background: var(--color-danger, #ef4444);
+  color: white;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--color-danger-dark, #dc2626);
+}
+
+.btn-danger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 </style>

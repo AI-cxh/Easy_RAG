@@ -27,7 +27,7 @@ def get_db():
 
 # Initialize database
 def init_db():
-    from app.models.models import KnowledgeBase, Document, ChatSession, ChatMessage
+    from app.models.models import KnowledgeBase, Document, ChatSession, ChatMessage, User
     Base.metadata.create_all(bind=engine)
 
     # 迁移：为 chat_messages 表添加 extra_data 列（如果不存在）
@@ -55,4 +55,16 @@ def init_db():
             session_columns = [row[1] for row in result.fetchall()]
             if 'session_type' not in session_columns:
                 conn.execute(text("ALTER TABLE chat_sessions ADD COLUMN session_type VARCHAR(20) DEFAULT 'rag'"))
+                conn.commit()
+
+            # 为 chat_sessions 表添加 user_id 列
+            if 'user_id' not in session_columns:
+                conn.execute(text("ALTER TABLE chat_sessions ADD COLUMN user_id INTEGER"))
+                conn.commit()
+
+            # 为 knowledge_bases 表添加 user_id 列
+            result = conn.execute(text("PRAGMA table_info(knowledge_bases)"))
+            kb_columns = [row[1] for row in result.fetchall()]
+            if 'user_id' not in kb_columns:
+                conn.execute(text("ALTER TABLE knowledge_bases ADD COLUMN user_id INTEGER"))
                 conn.commit()

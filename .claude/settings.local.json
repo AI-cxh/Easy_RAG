@@ -12,7 +12,8 @@
       "Bash(python -m py_compile app/services/multi_agent/retrieval_agent.py)",
       "Bash(python:*)",
       "Bash(curl -s http://localhost:9000/api/knowledge)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(ls -la /home/chenxuhao/project/agentic_RAG/*.md)"
     ]
   }
 }
