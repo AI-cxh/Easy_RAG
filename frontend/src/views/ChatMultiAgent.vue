@@ -11,8 +11,9 @@
     />
 
     <!-- 左侧面板：会话列表 + 工具面板 -->
-    <aside class="chat-sidebar" :class="{ open: sidebarOpen, collapsed: sidebarCollapsed }">
-      <!-- 会话列表区域 -->
+    <div class="sidebar-wrapper">
+      <aside class="chat-sidebar" :class="{ open: sidebarOpen, collapsed: sidebarCollapsed }">
+        <!-- 会话列表区域 -->
       <div class="sidebar-sessions">
         <div class="sidebar-header">
           <button class="btn btn-primary new-chat-btn" @click="newChat">
@@ -41,7 +42,15 @@
               @click="handleSelectSession(session.id)"
             >
               <div class="session-content">
-                <span class="session-title">{{ session.title }}</span>
+                <div class="session-title-row">
+                  <span class="session-title">{{ session.title }}</span>
+                  <span
+                    v-if="isAdmin && session.username && session.username !== currentUser?.username"
+                    class="user-badge"
+                  >
+                    {{ session.username }}
+                  </span>
+                </div>
                 <span class="session-time">{{ formatTime(session.created_at) }}</span>
               </div>
               <div class="session-actions" @click.stop>
@@ -65,7 +74,20 @@
       <div class="sidebar-tools">
         <ToolsPanel />
       </div>
-    </aside>
+      </aside>
+
+      <!-- 折叠按钮 -->
+      <button
+        class="collapse-btn"
+        :class="{ collapsed: sidebarCollapsed }"
+        @click="toggleSidebarCollapse"
+        :title="sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'"
+      >
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+        </svg>
+      </button>
+    </div>
 
     <!-- 右侧对话区域 -->
     <main class="chat-main">
@@ -341,6 +363,7 @@
 import { ref, onMounted, nextTick } from 'vue'
 import { multiAgentAPI, chatAPI } from '../api/client'
 import { useSession, type SessionType, type ChatSession } from '../composables/useSession'
+import { useAuth } from '../composables/useAuth'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
 import DOMPurify from 'dompurify'
@@ -354,6 +377,7 @@ import 'katex/dist/katex.min.css'
 // 会话类型
 const SESSION_TYPE: SessionType = 'multi_agent'
 const { sessions, loading: loadingSessions, loadSessions, deleteSession: deleteSessionFromList, renameSession: renameSessionInList } = useSession(SESSION_TYPE)
+const { isAdmin, user: currentUser } = useAuth()
 
 // 重命名相关状态
 const editingSessionId = ref<number>()
@@ -469,13 +493,14 @@ const renderMarkdown = (content: string) => {
   })
 }
 
-// 切换侧边栏
+// 切换侧边栏（移动端）
 const toggleSidebar = () => {
-  if (window.innerWidth <= 768) {
-    sidebarOpen.value = !sidebarOpen.value
-  } else {
-    sidebarCollapsed.value = !sidebarCollapsed.value
-  }
+  sidebarOpen.value = !sidebarOpen.value
+}
+
+// 切换侧边栏折叠（桌面端）
+const toggleSidebarCollapse = () => {
+  sidebarCollapsed.value = !sidebarCollapsed.value
 }
 
 // 自动调整输入框高度
@@ -775,6 +800,12 @@ onMounted(() => {
 @import '../assets/chat.css';
 
 /* 侧边栏样式 */
+.sidebar-wrapper {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+}
+
 .chat-sidebar {
   width: clamp(280px, 30vw, 360px);
   background: var(--bg-secondary);
@@ -789,6 +820,53 @@ onMounted(() => {
   width: 0;
   border-right: none;
   overflow: hidden;
+}
+
+/* 折叠按钮 */
+.collapse-btn {
+  position: absolute;
+  top: 50%;
+  left: calc(clamp(280px, 30vw, 360px) - 14px);
+  transform: translateY(-50%);
+  width: 28px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--duration-fast);
+  z-index: 10;
+  opacity: 0;
+}
+
+.sidebar-wrapper:hover .collapse-btn {
+  opacity: 1;
+}
+
+.collapse-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.collapse-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+  transition: transform var(--duration-normal) var(--ease-spring);
+}
+
+.collapse-btn.collapsed {
+  left: 0;
+  opacity: 1;
+}
+
+.collapse-btn.collapsed svg {
+  transform: rotate(180deg);
 }
 
 .sidebar-sessions {
@@ -878,8 +956,13 @@ onMounted(() => {
   min-width: 0;
 }
 
+.session-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .session-title {
-  display: block;
   font-size: var(--text-sm);
   color: var(--text-primary);
   overflow: hidden;
@@ -890,6 +973,16 @@ onMounted(() => {
 .session-time {
   font-size: var(--text-xs);
   color: var(--text-muted);
+}
+
+.user-badge {
+  font-size: var(--text-xs);
+  padding: 1px var(--space-2);
+  background: var(--color-accent-light);
+  color: var(--color-accent);
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+  font-weight: var(--font-medium);
 }
 
 .session-actions {
@@ -1107,6 +1200,10 @@ onMounted(() => {
 
 /* 移动端适配 */
 @media (max-width: 768px) {
+  .sidebar-wrapper {
+    position: static;
+  }
+
   .chat-sidebar {
     position: fixed;
     left: clamp(56px, 8vw, 72px);
@@ -1134,6 +1231,10 @@ onMounted(() => {
 
   .sidebar-tools {
     max-height: 30%;
+  }
+
+  .collapse-btn {
+    display: none;
   }
 }
 

@@ -192,7 +192,21 @@ async def get_sessions(
     if user.role != "admin":
         query = query.filter(ChatSession.user_id == user.id)
     sessions = query.order_by(ChatSession.created_at.desc()).all()
-    return ChatSessionListResponse(sessions=sessions)
+
+    # 构建响应，包含用户名
+    session_list = []
+    for session in sessions:
+        session_dict = {
+            "id": session.id,
+            "title": session.title,
+            "session_type": session.session_type,
+            "user_id": session.user_id,
+            "username": session.user.username if session.user else None,
+            "created_at": session.created_at
+        }
+        session_list.append(ChatSessionResponse(**session_dict, messages=[]))
+
+    return ChatSessionListResponse(sessions=session_list)
 
 
 @router.get("/chat/sessions/{session_id}", response_model=ChatSessionResponse)

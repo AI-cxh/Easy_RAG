@@ -51,6 +51,41 @@ class AdminInit(BaseModel):
     password: str = Field(..., min_length=6, max_length=100, description="密码")
 
 
+# Admin User Management Schemas
+class AdminUserCreate(BaseModel):
+    """管理员创建用户"""
+    username: str = Field(..., min_length=3, max_length=50, description="用户名")
+    email: EmailStr = Field(..., description="邮箱")
+    password: str = Field(..., min_length=6, max_length=100, description="密码")
+    role: str = Field(default="user", description="角色: admin/user")
+    status: str = Field(default="approved", description="状态: pending/approved/rejected")
+
+
+class AdminUserUpdate(BaseModel):
+    """管理员更新用户信息"""
+    username: Optional[str] = Field(None, min_length=3, max_length=50, description="用户名")
+    email: Optional[EmailStr] = Field(None, description="邮箱")
+    role: Optional[str] = Field(None, description="角色: admin/user")
+    status: Optional[str] = Field(None, description="状态: pending/approved/rejected")
+
+
+class AdminPasswordReset(BaseModel):
+    """管理员重置用户密码"""
+    new_password: str = Field(..., min_length=6, max_length=100, description="新密码")
+
+
+class UserStatsResponse(BaseModel):
+    """用户统计信息"""
+    kb_count: int = 0
+    doc_count: int = 0
+    chunk_count: int = 0
+
+
+class UserDetailResponse(UserResponse):
+    """用户详情，包含统计信息"""
+    stats: UserStatsResponse = UserStatsResponse()
+
+
 # KnowledgeBase Schemas
 class KnowledgeBaseCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255, description="知识库名称")
@@ -225,6 +260,7 @@ class ChatSessionResponse(BaseModel):
     title: str
     session_type: str = "rag"  # rag, agentic, multi_agent
     user_id: Optional[int] = None
+    username: Optional[str] = None  # 用户名，用于管理员区分
     created_at: datetime
     messages: List[ChatMessageResponse] = []
 

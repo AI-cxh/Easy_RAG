@@ -251,6 +251,7 @@ import { useRoute, useRouter } from 'vue-router'
 import AppNavRail from '../components/AppNavRail.vue'
 import Breadcrumb from '../components/Breadcrumb.vue'
 import Pagination from '../components/Pagination.vue'
+import { knowledgeAPI, chunkAPI } from '../api/client'
 
 interface Chunk {
   id: number
@@ -268,8 +269,6 @@ interface Document {
   id: number
   filename: string
 }
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -308,11 +307,8 @@ const breadcrumbItems = computed(() => [
 
 const loadDocument = async () => {
   try {
-    const response = await fetch(`${API_BASE}/knowledge/${kbId.value}/documents`)
-    if (response.ok) {
-      const data = await response.json()
-      document.value = data.items.find((d: Document) => d.id === docId.value)
-    }
+    const data = await knowledgeAPI.getDocuments(kbId.value)
+    document.value = data.items.find((d: Document) => d.id === docId.value)
   } catch (error) {
     console.error('Failed to load document:', error)
   }
@@ -321,19 +317,13 @@ const loadDocument = async () => {
 const loadChunks = async () => {
   loading.value = true
   try {
-    const params = new URLSearchParams({
-      page: currentPage.value.toString(),
-      page_size: pageSize.value.toString()
+    const data = await chunkAPI.getList(docId.value, {
+      page: currentPage.value,
+      page_size: pageSize.value,
+      enabled: enabledFilter.value ?? undefined
     })
-    if (enabledFilter.value !== null) {
-      params.append('enabled', enabledFilter.value.toString())
-    }
-    const response = await fetch(`${API_BASE}/chunks/${docId.value}?${params}`)
-    if (response.ok) {
-      const data = await response.json()
-      chunks.value = data.items
-      total.value = data.total
-    }
+    chunks.value = data.items
+    total.value = data.total
   } catch (error) {
     console.error('Failed to load chunks:', error)
   } finally {
@@ -378,22 +368,13 @@ const createChunk = async () => {
 
   creating.value = true
   try {
-    const response = await fetch(`${API_BASE}/chunks/${docId.value}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: newChunkContent.value })
-    })
-    if (response.ok) {
-      showCreateDialog.value = false
-      newChunkContent.value = ''
-      await loadChunks()
-    } else {
-      const error = await response.text()
-      alert(error || '创建失败')
-    }
+    await chunkAPI.create(docId.value, newChunkContent.value)
+    showCreateDialog.value = false
+    newChunkContent.value = ''
+    await loadChunks()
   } catch (error) {
     console.error('Failed to create chunk:', error)
-    alert('创建失败')
+    alert(error instanceof Error ? error.message : '创建失败')
   } finally {
     creating.value = false
   }
@@ -413,34 +394,22 @@ const saveChunk = async () => {
   if (!editingChunk.value) return
 
   try {
-    const response = await fetch(`${API_BASE}/chunks/${editingChunk.value.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: editingContent.value })
-    })
-    if (response.ok) {
-      cancelEdit()
-      await loadChunks()
-    } else {
-      const error = await response.text()
-      alert(error || '更新失败')
-    }
+    await chunkAPI.update(editingChunk.value.id, { content: editingContent.value })
+    cancelEdit()
+    await loadChunks()
   } catch (error) {
     console.error('Failed to update chunk:', error)
-    alert('更新失败')
+    alert(error instanceof Error ? error.message : '更新失败')
   }
 }
 
 const toggleChunk = async (chunk: Chunk) => {
   try {
-    const response = await fetch(`${API_BASE}/chunks/${chunk.id}/toggle`, {
-      method: 'PUT'
-    })
-    if (response.ok) {
-      chunk.enabled = !chunk.enabled
-    }
+    await chunkAPI.toggle(chunk.id)
+    chunk.enabled = !chunk.enabled
   } catch (error) {
     console.error('Failed to toggle chunk:', error)
+    alert(error instanceof Error ? error.message : '操作失败')
   }
 }
 
@@ -448,18 +417,11 @@ const deleteChunk = async (chunkId: number) => {
   if (!confirm('确定要删除该分块吗？')) return
 
   try {
-    const response = await fetch(`${API_BASE}/chunks/${chunkId}`, {
-      method: 'DELETE'
-    })
-    if (response.ok) {
-      await loadChunks()
-    } else {
-      const error = await response.text()
-      alert(error || '删除失败')
-    }
+    await chunkAPI.delete(chunkId)
+    await loadChunks()
   } catch (error) {
     console.error('Failed to delete chunk:', error)
-    alert('删除失败')
+    alert(error instanceof Error ? error.message : '删除失败')
   }
 }
 
@@ -467,18 +429,13 @@ const batchEnable = async () => {
   if (selectedChunks.value.length === 0) return
 
   try {
-    const response = await fetch(`${API_BASE}/chunks/batch-enable`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chunk_ids: selectedChunks.value })
-    })
-    if (response.ok) {
-      selectedChunks.value = []
-      selectAll.value = false
-      await loadChunks()
-    }
+    await chunkAPI.batchEnable(selectedChunks.value)
+    selectedChunks.value = []
+    selectAll.value = false
+    await loadChunks()
   } catch (error) {
     console.error('Failed to batch enable:', error)
+    alert(error instanceof Error ? error.message : '操作失败')
   }
 }
 
@@ -486,44 +443,33 @@ const batchDisable = async () => {
   if (selectedChunks.value.length === 0) return
 
   try {
-    const response = await fetch(`${API_BASE}/chunks/batch-disable`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chunk_ids: selectedChunks.value })
-    })
-    if (response.ok) {
-      selectedChunks.value = []
-      selectAll.value = false
-      await loadChunks()
-    }
+    await chunkAPI.batchDisable(selectedChunks.value)
+    selectedChunks.value = []
+    selectAll.value = false
+    await loadChunks()
   } catch (error) {
     console.error('Failed to batch disable:', error)
+    alert(error instanceof Error ? error.message : '操作失败')
   }
 }
 
 const enableAll = async () => {
   try {
-    const response = await fetch(`${API_BASE}/chunks/enable-all/${docId.value}`, {
-      method: 'POST'
-    })
-    if (response.ok) {
-      await loadChunks()
-    }
+    await chunkAPI.enableAll(docId.value)
+    await loadChunks()
   } catch (error) {
     console.error('Failed to enable all:', error)
+    alert(error instanceof Error ? error.message : '操作失败')
   }
 }
 
 const disableAll = async () => {
   try {
-    const response = await fetch(`${API_BASE}/chunks/disable-all/${docId.value}`, {
-      method: 'POST'
-    })
-    if (response.ok) {
-      await loadChunks()
-    }
+    await chunkAPI.disableAll(docId.value)
+    await loadChunks()
   } catch (error) {
     console.error('Failed to disable all:', error)
+    alert(error instanceof Error ? error.message : '操作失败')
   }
 }
 
@@ -536,22 +482,13 @@ const confirmRebuild = async () => {
   rebuilding.value = true
 
   try {
-    const response = await fetch(`${API_BASE}/chunks/rebuild-vectors/${docId.value}`, {
-      method: 'POST'
-    })
-    if (response.ok) {
-      const data = await response.json()
-      resultSuccess.value = true
-      resultMessage.value = data.message || '向量重建完成'
-    } else {
-      const error = await response.text()
-      resultSuccess.value = false
-      resultMessage.value = error || '重建失败'
-    }
+    const data = await chunkAPI.rebuildVectors(docId.value)
+    resultSuccess.value = true
+    resultMessage.value = data.message || '向量重建完成'
   } catch (error) {
     console.error('Failed to rebuild vectors:', error)
     resultSuccess.value = false
-    resultMessage.value = '重建失败，请检查网络连接'
+    resultMessage.value = error instanceof Error ? error.message : '重建失败'
   } finally {
     rebuilding.value = false
     showResultDialog.value = true

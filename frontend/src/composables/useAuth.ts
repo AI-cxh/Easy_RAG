@@ -12,6 +12,16 @@ export interface User {
   approved_at?: string
 }
 
+export interface UserStats {
+  kb_count: number
+  doc_count: number
+  chunk_count: number
+}
+
+export interface UserDetail extends User {
+  stats: UserStats
+}
+
 export interface AuthTokens {
   access_token: string
   refresh_token: string
@@ -224,6 +234,83 @@ export function useAuth() {
     }
   }
 
+  // ============ 管理员用户管理 ============
+
+  async function createUser(data: {
+    username: string
+    email: string
+    password: string
+    role?: 'admin' | 'user'
+    status?: 'pending' | 'approved' | 'rejected'
+  }): Promise<User> {
+    const response = await fetch(`${API_BASE_URL}/auth/users`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token.value}`
+      },
+      body: JSON.stringify(data)
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || '创建用户失败')
+    }
+
+    return await response.json()
+  }
+
+  async function getUserDetail(userId: number): Promise<UserDetail> {
+    const response = await fetch(`${API_BASE_URL}/auth/users/${userId}`, {
+      headers: { 'Authorization': `Bearer ${token.value}` }
+    })
+
+    if (!response.ok) {
+      throw new Error('获取用户详情失败')
+    }
+
+    return await response.json()
+  }
+
+  async function updateUser(userId: number, data: {
+    username?: string
+    email?: string
+    role?: 'admin' | 'user'
+    status?: 'pending' | 'approved' | 'rejected'
+  }): Promise<User> {
+    const response = await fetch(`${API_BASE_URL}/auth/users/${userId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token.value}`
+      },
+      body: JSON.stringify(data)
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || '更新用户失败')
+    }
+
+    return await response.json()
+  }
+
+  async function resetUserPassword(userId: number, newPassword: string): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/auth/users/${userId}/reset-password`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token.value}`
+      },
+      body: JSON.stringify({ new_password: newPassword })
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || '重置密码失败')
+    }
+  }
+
   return {
     user,
     token,
@@ -240,6 +327,10 @@ export function useAuth() {
     fetchUsers,
     approveUser,
     rejectUser,
-    deleteUser
+    deleteUser,
+    createUser,
+    getUserDetail,
+    updateUser,
+    resetUserPassword
   }
 }

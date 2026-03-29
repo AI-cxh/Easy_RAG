@@ -26,7 +26,7 @@
         <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
       </svg>
     </router-link>
-    <router-link to="/settings" class="nav-rail-btn" title="设置">
+    <router-link v-if="isAdmin" to="/settings" class="nav-rail-btn" title="设置">
       <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
         <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
       </svg>
@@ -193,17 +193,17 @@ document.addEventListener('click', (e) => {
 
 .user-menu {
   position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  margin-bottom: 8px;
+  left: 100%;
+  bottom: 0;
+  margin-left: 8px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   min-width: 160px;
   overflow: hidden;
-  animation: slideUp var(--duration-fast) var(--ease-soft);
+  animation: slideRight var(--duration-fast) var(--ease-soft);
+  z-index: 1000;
 }
 
 .user-info {
@@ -248,14 +248,14 @@ document.addEventListener('click', (e) => {
   fill: currentColor;
 }
 
-@keyframes slideUp {
+@keyframes slideRight {
   from {
     opacity: 0;
-    transform: translateX(-50%) translateY(8px);
+    transform: translateX(-8px);
   }
   to {
     opacity: 1;
-    transform: translateX(-50%) translateY(0);
+    transform: translateX(0);
   }
 }
 </style>

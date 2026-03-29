@@ -1,13 +1,14 @@
 <template>
-  <aside class="chat-sidebar" :class="{ open: sidebarOpen, collapsed: sidebarCollapsed }">
-    <div class="sidebar-header">
-      <button class="btn btn-primary new-chat-btn" @click="$emit('newChat')">
-        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-          <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
-        </svg>
-        <span class="btn-text">新对话</span>
-      </button>
-    </div>
+  <div class="sidebar-wrapper">
+    <aside class="chat-sidebar" :class="{ open: sidebarOpen, collapsed: sidebarCollapsed }">
+      <div class="sidebar-header">
+        <button class="btn btn-primary new-chat-btn" @click="$emit('newChat')">
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+          </svg>
+          <span class="btn-text">新对话</span>
+        </button>
+      </div>
 
     <div class="sidebar-content">
       <div v-if="loading" class="loading-state">
@@ -27,7 +28,15 @@
           @click="$emit('selectSession', session.id)"
         >
           <div class="session-content">
-            <span class="session-title">{{ session.title }}</span>
+            <div class="session-title-row">
+              <span class="session-title">{{ session.title }}</span>
+              <span
+                v-if="isAdmin && session.username && session.username !== user?.username"
+                class="user-badge"
+              >
+                {{ session.username }}
+              </span>
+            </div>
             <span class="session-time">{{ formatTime(session.created_at) }}</span>
           </div>
           <div class="session-actions" @click.stop>
@@ -95,11 +104,25 @@
       </div>
     </Teleport>
   </aside>
+
+  <!-- 折叠按钮 - 放在外部确保折叠后仍可见 -->
+  <button
+    class="collapse-btn"
+    :class="{ collapsed: sidebarCollapsed }"
+    @click="$emit('toggleCollapse')"
+    :title="sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'"
+  >
+    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+    </svg>
+  </button>
+</div>
 </template>
 
 <script setup lang="ts">
 import { ref, nextTick, watch } from 'vue'
 import type { ChatSession } from '../composables/useSession'
+import { useAuth } from '../composables/useAuth'
 
 const props = defineProps<{
   sessions: ChatSession[]
@@ -109,11 +132,14 @@ const props = defineProps<{
   sidebarCollapsed: boolean
 }>()
 
+const { isAdmin, user } = useAuth()
+
 const emit = defineEmits<{
   (e: 'newChat'): void
   (e: 'selectSession', sessionId: number): void
   (e: 'deleteSession', sessionId: number): void
   (e: 'renameSession', sessionId: number, title: string): void
+  (e: 'toggleCollapse'): void
 }>()
 
 const editingSessionId = ref<number>()
@@ -180,6 +206,12 @@ const cancelDelete = () => {
 </script>
 
 <style scoped>
+.sidebar-wrapper {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+}
+
 .chat-sidebar {
   width: clamp(220px, 25vw, 300px);
   background: var(--bg-secondary);
@@ -194,6 +226,53 @@ const cancelDelete = () => {
   width: 0;
   border-right: none;
   overflow: hidden;
+}
+
+/* 折叠按钮 */
+.collapse-btn {
+  position: absolute;
+  top: 50%;
+  left: calc(clamp(220px, 25vw, 300px) - 14px);
+  transform: translateY(-50%);
+  width: 28px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--duration-fast);
+  z-index: 10;
+  opacity: 0;
+}
+
+.sidebar-wrapper:hover .collapse-btn {
+  opacity: 1;
+}
+
+.collapse-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.collapse-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+  transition: transform var(--duration-normal) var(--ease-spring);
+}
+
+.collapse-btn.collapsed {
+  left: 0;
+  opacity: 1;
+}
+
+.collapse-btn.collapsed svg {
+  transform: rotate(180deg);
 }
 
 .sidebar-header {
@@ -262,8 +341,13 @@ const cancelDelete = () => {
   min-width: 0;
 }
 
+.session-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .session-title {
-  display: block;
   font-size: var(--text-sm);
   color: var(--text-primary);
   overflow: hidden;
@@ -274,6 +358,16 @@ const cancelDelete = () => {
 .session-time {
   font-size: var(--text-xs);
   color: var(--text-muted);
+}
+
+.user-badge {
+  font-size: var(--text-xs);
+  padding: 1px var(--space-2);
+  background: var(--color-accent-light);
+  color: var(--color-accent);
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+  font-weight: var(--font-medium);
 }
 
 .session-actions {
@@ -483,6 +577,10 @@ const cancelDelete = () => {
 
 /* 移动端适配 */
 @media (max-width: 768px) {
+  .sidebar-wrapper {
+    position: static;
+  }
+
   .chat-sidebar {
     position: fixed;
     left: clamp(56px, 8vw, 72px);
@@ -506,6 +604,10 @@ const cancelDelete = () => {
 
   .session-actions {
     opacity: 1;
+  }
+
+  .collapse-btn {
+    display: none;
   }
 }
 </style>

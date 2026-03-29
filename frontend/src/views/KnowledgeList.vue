@@ -170,7 +170,8 @@
             </div>
             <div class="form-group">
               <label class="form-label">负责人</label>
-              <input v-model="newKbForm.owner" type="text" class="input" placeholder="负责人姓名" />
+              <input :value="currentUser" type="text" class="input" disabled />
+              <span class="form-hint">默认为当前用户</span>
             </div>
           </div>
           <div class="dialog-footer">
@@ -264,9 +265,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import AppNavRail from '../components/AppNavRail.vue'
 import Pagination from '../components/Pagination.vue'
+import { knowledgeAPI } from '../api/client'
+import { useAuth } from '../composables/useAuth'
 
 interface KnowledgeBase {
   id: number
@@ -286,8 +289,6 @@ interface Stats {
   total_docs: number
   kbs_with_docs: number
 }
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api'
 
 const knowledgeBases = ref<KnowledgeBase[]>([])
 const stats = ref<Stats>({ total_kbs: 0, total_docs: 0, kbs_with_docs: 0 })
@@ -319,12 +320,13 @@ const editingOwner = ref('')
 const deletingKb = ref<KnowledgeBase | null>(null)
 const deleting = ref(false)
 
+// 获取当前用户
+const { user } = useAuth()
+const currentUser = computed(() => user.value?.username || '')
+
 const loadStats = async () => {
   try {
-    const response = await fetch(`${API_BASE}/knowledge/stats`)
-    if (response.ok) {
-      stats.value = await response.json()
-    }
+    stats.value = await knowledgeAPI.getStats()
   } catch (error) {
     console.error('Failed to load stats:', error)
   }
@@ -333,17 +335,13 @@ const loadStats = async () => {
 const loadKnowledgeBases = async () => {
   loading.value = true
   try {
-    const params = new URLSearchParams({
-      page: currentPage.value.toString(),
-      page_size: pageSize.value.toString(),
+    const data = await knowledgeAPI.getList({
+      page: currentPage.value,
+      page_size: pageSize.value,
       search: searchQuery.value
     })
-    const response = await fetch(`${API_BASE}/knowledge?${params}`)
-    if (response.ok) {
-      const data = await response.json()
-      knowledgeBases.value = data.items
-      total.value = data.total
-    }
+    knowledgeBases.value = data.items
+    total.value = data.total
   } catch (error) {
     console.error('Failed to load knowledge bases:', error)
   } finally {
@@ -374,30 +372,24 @@ const createKb = async () => {
 
   creating.value = true
   try {
-    const response = await fetch(`${API_BASE}/knowledge`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newKbForm.value)
+    await knowledgeAPI.create({
+      ...newKbForm.value,
+      owner: currentUser.value
     })
-    if (response.ok) {
-      showCreateDialog.value = false
-      newKbForm.value = {
-        name: '',
-        description: '',
-        chunk_size: 1000,
-        chunk_overlap: 200,
-        embedding_model: 'text-embedding-ada-002',
-        owner: ''
-      }
-      await loadStats()
-      await loadKnowledgeBases()
-    } else {
-      const error = await response.text()
-      alert(error || '创建失败')
+    showCreateDialog.value = false
+    newKbForm.value = {
+      name: '',
+      description: '',
+      chunk_size: 1000,
+      chunk_overlap: 200,
+      embedding_model: 'BAAI/bge-m3',
+      owner: ''
     }
+    await loadStats()
+    await loadKnowledgeBases()
   } catch (error) {
     console.error('Failed to create knowledge base:', error)
-    alert('创建失败')
+    alert(error instanceof Error ? error.message : '创建失败')
   } finally {
     creating.value = false
   }
@@ -421,28 +413,19 @@ const saveKb = async () => {
   if (!editingKb.value || !editingName.value.trim()) return
 
   try {
-    const response = await fetch(`${API_BASE}/knowledge/${editingKb.value.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: editingName.value.trim(),
-        description: editingDescription.value.trim() || null,
-        chunk_size: editingChunkSize.value,
-        chunk_overlap: editingChunkOverlap.value,
-        embedding_model: editingEmbeddingModel.value.trim() || null,
-        owner: editingOwner.value.trim() || null
-      })
+    await knowledgeAPI.update(editingKb.value.id, {
+      name: editingName.value.trim(),
+      description: editingDescription.value.trim() || undefined,
+      chunk_size: editingChunkSize.value,
+      chunk_overlap: editingChunkOverlap.value,
+      embedding_model: editingEmbeddingModel.value.trim() || undefined,
+      owner: editingOwner.value.trim() || undefined
     })
-    if (response.ok) {
-      cancelEdit()
-      await loadKnowledgeBases()
-    } else {
-      const error = await response.text()
-      alert(error || '更新失败')
-    }
+    cancelEdit()
+    await loadKnowledgeBases()
   } catch (error) {
     console.error('Failed to update knowledge base:', error)
-    alert('更新失败')
+    alert(error instanceof Error ? error.message : '更新失败')
   }
 }
 
@@ -459,18 +442,13 @@ const executeDelete = async () => {
 
   deleting.value = true
   try {
-    const response = await fetch(`${API_BASE}/knowledge/${deletingKb.value.id}`, { method: 'DELETE' })
-    if (response.ok) {
-      deletingKb.value = null
-      await loadStats()
-      await loadKnowledgeBases()
-    } else {
-      const error = await response.text()
-      alert(error || '删除失败')
-    }
+    await knowledgeAPI.delete(deletingKb.value.id)
+    deletingKb.value = null
+    await loadStats()
+    await loadKnowledgeBases()
   } catch (error) {
     console.error('Failed to delete knowledge base:', error)
-    alert('删除失败')
+    alert(error instanceof Error ? error.message : '删除失败')
   } finally {
     deleting.value = false
   }
@@ -702,6 +680,12 @@ onMounted(() => {
   font-size: var(--text-xs);
   color: var(--text-muted);
   margin-top: var(--space-1);
+}
+
+.form-group input:disabled {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: not-allowed;
 }
 
 .dialog-wide {

@@ -21,6 +21,7 @@
       @select-session="handleSelectSession"
       @delete-session="handleDeleteSession"
       @rename-session="handleRenameSession"
+      @toggle-collapse="toggleSidebarCollapse"
     />
 
     <!-- 右侧对话区域 -->
@@ -366,13 +367,14 @@ const renderMarkdown = (content: string) => {
   })
 }
 
-// 切换侧边栏
+// 切换侧边栏（移动端）
 const toggleSidebar = () => {
-  if (window.innerWidth <= 768) {
-    sidebarOpen.value = !sidebarOpen.value
-  } else {
-    sidebarCollapsed.value = !sidebarCollapsed.value
-  }
+  sidebarOpen.value = !sidebarOpen.value
+}
+
+// 切换侧边栏折叠（桌面端）
+const toggleSidebarCollapse = () => {
+  sidebarCollapsed.value = !sidebarCollapsed.value
 }
 
 // 自动调整输入框高度

@@ -7,6 +7,8 @@ export interface ChatSession {
   id: number
   title: string
   session_type: string
+  user_id?: number
+  username?: string
   created_at: string
 }
 

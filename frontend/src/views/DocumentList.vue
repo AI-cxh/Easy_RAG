@@ -168,6 +168,7 @@ import { useRoute, useRouter } from 'vue-router'
 import AppNavRail from '../components/AppNavRail.vue'
 import Breadcrumb from '../components/Breadcrumb.vue'
 import Pagination from '../components/Pagination.vue'
+import { knowledgeAPI, uploadAPI } from '../api/client'
 
 interface Document {
   id: number
@@ -189,8 +190,6 @@ interface KnowledgeBase {
   id: number
   name: string
 }
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -216,10 +215,7 @@ const breadcrumbItems = computed(() => [
 
 const loadKnowledgeBase = async () => {
   try {
-    const response = await fetch(`${API_BASE}/knowledge/${kbId.value}`)
-    if (response.ok) {
-      knowledgeBase.value = await response.json()
-    }
+    knowledgeBase.value = await knowledgeAPI.get(kbId.value)
   } catch (error) {
     console.error('Failed to load knowledge base:', error)
   }
@@ -228,18 +224,14 @@ const loadKnowledgeBase = async () => {
 const loadDocuments = async () => {
   loading.value = true
   try {
-    const params = new URLSearchParams({
-      page: currentPage.value.toString(),
-      page_size: pageSize.value.toString(),
+    const data = await knowledgeAPI.getDocuments(kbId.value, {
+      page: currentPage.value,
+      page_size: pageSize.value,
       search: searchQuery.value,
       status: statusFilter.value
     })
-    const response = await fetch(`${API_BASE}/knowledge/${kbId.value}/documents?${params}`)
-    if (response.ok) {
-      const data = await response.json()
-      documents.value = data.items
-      total.value = data.total
-    }
+    documents.value = data.items
+    total.value = data.total
   } catch (error) {
     console.error('Failed to load documents:', error)
   } finally {
@@ -296,29 +288,8 @@ const uploadFiles = async (files: File[]) => {
     uploadingFiles.value.push(file.name)
 
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-
-      await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest()
-        xhr.open('POST', `${API_BASE}/upload/${kbId.value}`)
-
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            uploadProgress.value = Math.round((e.loaded / e.total) * 100)
-          }
-        }
-
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve(xhr.response)
-          } else {
-            reject(new Error('上传失败'))
-          }
-        }
-
-        xhr.onerror = () => reject(new Error('上传失败'))
-        xhr.send(formData)
+      await uploadAPI.upload(kbId.value, file, (progress) => {
+        uploadProgress.value = progress
       })
 
       // 上传成功后刷新列表
@@ -327,7 +298,7 @@ const uploadFiles = async (files: File[]) => {
       console.error('Failed to upload file:', error)
       // 移除临时记录
       documents.value = documents.value.filter(d => d.id !== tempDoc.id)
-      alert(`上传文件 ${file.name} 失败`)
+      alert(`上传文件 ${file.name} 失败: ${error instanceof Error ? error.message : '未知错误'}`)
     } finally {
       uploadingFiles.value = uploadingFiles.value.filter(f => f !== file.name)
     }
@@ -337,14 +308,11 @@ const uploadFiles = async (files: File[]) => {
 
 const toggleDocument = async (doc: Document) => {
   try {
-    const response = await fetch(`${API_BASE}/upload/documents/${doc.id}/toggle`, {
-      method: 'PUT'
-    })
-    if (response.ok) {
-      doc.enabled = !doc.enabled
-    }
+    await uploadAPI.toggleDocument(doc.id)
+    doc.enabled = !doc.enabled
   } catch (error) {
     console.error('Failed to toggle document:', error)
+    alert(error instanceof Error ? error.message : '操作失败')
   }
 }
 
@@ -364,18 +332,11 @@ const deleteDocument = async (docId: number) => {
   if (!confirm('确定要删除该文档吗？')) return
 
   try {
-    const response = await fetch(`${API_BASE}/upload/documents/${docId}`, {
-      method: 'DELETE'
-    })
-    if (response.ok) {
-      await loadDocuments()
-    } else {
-      const error = await response.text()
-      alert(error || '删除失败')
-    }
+    await uploadAPI.deleteDocument(docId)
+    await loadDocuments()
   } catch (error) {
     console.error('Failed to delete document:', error)
-    alert('删除失败')
+    alert(error instanceof Error ? error.message : '删除失败')
   }
 }
 
