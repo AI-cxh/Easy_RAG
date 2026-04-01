@@ -557,17 +557,17 @@ async def upload_chat_files(
 
         # 查找或创建临时知识库
         temp_kb = db.query(KnowledgeBase).filter(
-            KnowledgeBase.session_id == session_id,
+            KnowledgeBase.session_id == session.id,
             KnowledgeBase.is_temporary == True
         ).first()
 
         if not temp_kb:
             # 创建新的临时知识库
             temp_kb = KnowledgeBase(
-                name=f"临时文档_{session_id}",
+                name=f"临时文档_{session.id}",
                 description="聊天会话临时知识库",
                 is_temporary=True,
-                session_id=session_id,
+                session_id=session.id,
                 user_id=user.id
             )
             db.add(temp_kb)
