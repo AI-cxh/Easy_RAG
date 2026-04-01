@@ -569,8 +569,8 @@ async def upload_chat_files(
                 is_temporary=True,
                 session_id=session.id,
                 user_id=user.id,
-                chunk_size=400,  # 限制分块大小以适应嵌入模型的512 token限制
-                chunk_overlap=50
+                chunk_size=200,  # 限制分块大小以适应嵌入模型的512 token限制（中文约1.5-2 tokens/字）
+                chunk_overlap=30
             )
             db.add(temp_kb)
             db.commit()
