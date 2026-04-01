@@ -142,7 +142,24 @@
                   <!-- 知识库来源信息 -->
                   <div v-if="msg.sources?.length" class="message-sources">
                     <span class="sources-label">参考来源:</span>
-                    <span v-for="(source, i) in msg.sources" :key="i" class="source-tag">{{ source }}</span>
+                    <span
+                      v-for="(source, i) in msg.sources"
+                      :key="i"
+                      class="source-tag clickable"
+                      @click="openSourceDrawer(msg.source_details || [])"
+                      title="点击查看详情"
+                    >{{ source }}</span>
+                  </div>
+                  <!-- 知识库来源详情（新版） -->
+                  <div v-else-if="msg.source_details?.length" class="message-sources">
+                    <span class="sources-label">参考来源:</span>
+                    <span
+                      v-for="(kbName, i) in getUniqueKbNames(msg.source_details)"
+                      :key="i"
+                      class="source-tag clickable"
+                      @click="openSourceDrawer(msg.source_details)"
+                      title="点击查看详情"
+                    >{{ kbName }}</span>
                   </div>
                   <!-- 联网搜索来源 -->
                   <div v-if="msg.search_results?.length" class="message-sources web-sources">
@@ -202,6 +219,13 @@
             ></textarea>
             <div class="input-toolbar">
               <div class="toolbar-left">
+                <!-- 文件上传 -->
+                <FileUploader
+                  ref="fileUploaderRef"
+                  :session-id="currentSessionId"
+                  @uploaded="handleFileUploaded"
+                  @error="handleUploadError"
+                />
                 <!-- 知识库选择 -->
                 <div class="kb-dropdown">
                   <button
@@ -279,6 +303,13 @@
         <span>已复制到剪贴板</span>
       </div>
     </Transition>
+
+    <!-- 来源详情边栏 -->
+    <SourceDrawer
+      :visible="showSourceDrawer"
+      :sources="currentSourceDetails"
+      @close="showSourceDrawer = false"
+    />
   </div>
 </template>
 
@@ -292,6 +323,8 @@ import DOMPurify from 'dompurify'
 import katex from 'katex'
 import AppNavRail from '../components/AppNavRail.vue'
 import AppSidebar from '../components/AppSidebar.vue'
+import SourceDrawer from '../components/SourceDrawer.vue'
+import FileUploader from '../components/FileUploader.vue'
 import 'highlight.js/styles/github-dark.css'
 import 'katex/dist/katex.min.css'
 
@@ -300,10 +333,19 @@ const SESSION_TYPE: SessionType = 'rag'
 const { sessions, loading: loadingSessions, loadSessions, deleteSession: deleteSessionFromList, renameSession: renameSessionInList } = useSession(SESSION_TYPE)
 
 // 类型定义
+interface SourceDetail {
+  kb_name: string
+  doc_name: string
+  content: string
+  rerank_score?: number
+  distance?: number
+}
+
 interface Message {
   role: 'user' | 'assistant'
   content: string
   sources?: string[]
+  source_details?: SourceDetail[]
   search_results?: Array<{ title: string; url: string; snippet?: string }>
 }
 
@@ -326,6 +368,14 @@ const copySuccess = ref(false)
 const editingIndex = ref<number>()
 const editingContent = ref('')
 const editInputRef = ref<HTMLTextAreaElement>()
+
+// 来源详情边栏
+const showSourceDrawer = ref(false)
+const currentSourceDetails = ref<SourceDetail[]>([])
+
+// 文件上传相关
+const fileUploaderRef = ref<InstanceType<typeof FileUploader>>()
+const temporaryKbId = ref<number>()
 
 // 配置 marked
 marked.setOptions({
@@ -377,6 +427,32 @@ const toggleSidebarCollapse = () => {
   sidebarCollapsed.value = !sidebarCollapsed.value
 }
 
+// 打开来源详情边栏
+const openSourceDrawer = (sourceDetails: SourceDetail[]) => {
+  currentSourceDetails.value = sourceDetails
+  showSourceDrawer.value = true
+}
+
+// 获取去重后的知识库名称列表
+const getUniqueKbNames = (sourceDetails: SourceDetail[]): string[] => {
+  if (!sourceDetails || sourceDetails.length === 0) return []
+  const kbNames = sourceDetails.map(s => s.kb_name).filter(Boolean)
+  return [...new Set(kbNames)]
+}
+
+// 处理文件上传成功
+const handleFileUploaded = (data: { sessionId: number; kbId: number; files: any[] }) => {
+  temporaryKbId.value = data.kbId
+  if (!currentSessionId.value) {
+    currentSessionId.value = data.sessionId
+  }
+}
+
+// 处理上传错误
+const handleUploadError = (message: string) => {
+  console.error('Upload error:', message)
+}
+
 // 自动调整输入框高度
 const autoResize = () => {
   if (inputRef.value) {
@@ -406,7 +482,8 @@ const loadSession = async (sessionId: number) => {
     currentSessionId.value = sessionId
     messages.value = (result.messages || []).map((msg: any) => ({
       ...msg,
-      searchResults: msg.search_results || msg.searchResults
+      searchResults: msg.search_results || msg.searchResults,
+      source_details: msg.source_details || msg.sourceDetails
     }))
     hasUserInteracted.value = messages.value.length > 0
   } catch (error) {
@@ -432,6 +509,8 @@ const newChat = () => {
   messages.value = []
   hasUserInteracted.value = false
   sidebarOpen.value = false
+  temporaryKbId.value = undefined
+  fileUploaderRef.value?.clearFiles()
 }
 
 // 知识库操作
@@ -548,7 +627,10 @@ const handleSend = async () => {
       {
         message,
         session_id: currentSessionId.value,
-        kb_ids: selectedKbIds.value,
+        kb_ids: [
+          ...(temporaryKbId.value ? [temporaryKbId.value] : []),
+          ...selectedKbIds.value
+        ],
         use_web_search: useWebSearch.value,
         session_type: SESSION_TYPE
       },
@@ -565,6 +647,7 @@ const handleSend = async () => {
 
     currentSessionId.value = result.sessionId
     messages.value[assistantIndex].sources = result.sources
+    messages.value[assistantIndex].source_details = result.sourceDetails
     messages.value[assistantIndex].search_results = result.searchResults
 
     await loadSessions()
