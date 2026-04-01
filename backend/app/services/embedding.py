@@ -14,14 +14,20 @@ class EmbeddingService:
 
     def __init__(self):
         """初始化嵌入服务"""
-        # 判断是否使用本地 HuggingFace 模型
-        # 如果 EMBEDDING_MODEL 以 "BAAI/" 或 "sentence-transformers/" 开头，使用本地模型
-        use_local_model = (
-            settings.EMBEDDING_MODEL.startswith("BAAI/") or
-            settings.EMBEDDING_MODEL.startswith("sentence-transformers/")
-        )
+        # 判断是否使用远程 API
+        # 如果配置了 EMBEDDING_API_KEY 和 EMBEDDING_API_BASE，使用远程 API
+        use_remote_api = bool(settings.EMBEDDING_API_KEY and settings.EMBEDDING_API_BASE)
 
-        if use_local_model:
+        if use_remote_api:
+            # 使用远程 OpenAI 兼容的嵌入服务
+            print(f"使用远程嵌入服务: {settings.EMBEDDING_API_BASE}, 模型: {settings.EMBEDDING_MODEL}")
+            self.embeddings = OpenAIEmbeddings(
+                model=settings.EMBEDDING_MODEL,
+                openai_api_key=settings.EMBEDDING_API_KEY,
+                openai_api_base=settings.EMBEDDING_API_BASE
+            )
+            self._fallback_enabled = False
+        else:
             # 使用本地 HuggingFace 模型
             print(f"使用本地嵌入模型: {settings.EMBEDDING_MODEL}")
             self.embeddings = HuggingFaceEmbeddings(
@@ -30,17 +36,6 @@ class EmbeddingService:
                 encode_kwargs={'normalize_embeddings': True}
             )
             self._fallback_enabled = True
-        else:
-            # 使用 OpenAI 兼容的嵌入服务
-            embedding_api_key = settings.EMBEDDING_API_KEY or settings.OPENAI_API_KEY
-            embedding_api_base = settings.EMBEDDING_API_BASE or settings.OPENAI_API_BASE
-            print(f"使用远程嵌入服务: {embedding_api_base}, 模型: {settings.EMBEDDING_MODEL}")
-            self.embeddings = OpenAIEmbeddings(
-                model=settings.EMBEDDING_MODEL,
-                openai_api_key=embedding_api_key,
-                openai_api_base=embedding_api_base
-            )
-            self._fallback_enabled = False  # 标记是否已启用回退
 
         # 默认分块器（使用系统默认值）
         self.default_text_splitter = RecursiveCharacterTextSplitter(
@@ -84,7 +79,7 @@ class EmbeddingService:
         return collection
 
     def _ensure_embeddings(self) -> None:
-        """确保嵌入服务可用，如果失败则回退"""
+        """确保嵌入服务可用，如果失败则回退到本地模型"""
         if self._fallback_enabled:
             return
 
@@ -92,18 +87,18 @@ class EmbeddingService:
             # 测试嵌入服务是否可用
             _ = self.embeddings.embed_query("test")
         except Exception as e:
-            print(f"OpenAI 嵌入服务失败: {e}")
-            print("回退到使用本地 BGE 嵌入模型...")
+            print(f"远程嵌入服务失败: {e}")
+            print("回退到使用本地嵌入模型...")
             try:
                 self.embeddings = HuggingFaceEmbeddings(
-                    model_name="BAAI/bge-m3",
+                    model_name="sentence-transformers/all-MiniLM-L6-v2",
                     model_kwargs={'device': 'cpu'},
                     encode_kwargs={'normalize_embeddings': True}
                 )
                 self._fallback_enabled = True
-                print("已成功切换到本地 BGE 嵌入服务")
+                print("已成功切换到本地嵌入服务")
             except Exception as e2:
-                print(f"BGE 嵌入服务也失败: {e2}")
+                print(f"本地嵌入服务也失败: {e2}")
                 raise RuntimeError("无法初始化嵌入服务，请检查 API 配置或安装 sentence-transformers")
 
     def split_text(self, text: str, chunk_size: Optional[int] = None, chunk_overlap: Optional[int] = None) -> List[str]:
