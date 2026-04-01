@@ -513,7 +513,7 @@ async def chat_with_agent(
 @router.post("/chat/upload", response_model=ChatUploadResponse)
 async def upload_chat_files(
     files: List[UploadFile] = File(...),
-    session_id: int = Form(...),
+    session_id: int = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_user)
 ):
@@ -521,17 +521,28 @@ async def upload_chat_files(
     聊天文件上传接口 - 创建临时知识库与会话绑定
 
     - **files**: 上传的文件列表（支持 txt, md, pdf, docx）
-    - **session_id**: 会话ID
+    - **session_id**: 会话ID（可选，不传则自动创建新会话）
     """
     try:
-        # 检查会话是否存在
-        session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
-        if not session:
-            raise HTTPException(status_code=404, detail="会话不存在")
+        # 获取或创建会话
+        if session_id:
+            session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+            if not session:
+                raise HTTPException(status_code=404, detail="会话不存在")
 
-        # 权限检查
-        if session.user_id and session.user_id != user.id and user.role != "admin":
-            raise HTTPException(status_code=403, detail="无权访问此会话")
+            # 权限检查
+            if session.user_id and session.user_id != user.id and user.role != "admin":
+                raise HTTPException(status_code=403, detail="无权访问此会话")
+        else:
+            # 创建新会话
+            session = ChatSession(
+                title="文件对话",
+                session_type="rag",
+                user_id=user.id
+            )
+            db.add(session)
+            db.commit()
+            db.refresh(session)
 
         # 验证文件
         if not files:

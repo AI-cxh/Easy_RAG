@@ -548,12 +548,16 @@ export const chatAPI = {
   // 聊天上传文件
   uploadFiles: async (
     files: File[],
+    sessionId?: number,
     onProgress?: (progress: number) => void
   ): Promise<ChatUploadResponse> => {
     const formData = new FormData()
     files.forEach((file) => {
       formData.append('files', file)
     })
+    if (sessionId) {
+      formData.append('session_id', sessionId.toString())
+    }
 
     // 使用 XMLHttpRequest 来支持上传进度
     return new Promise((resolve, reject) => {

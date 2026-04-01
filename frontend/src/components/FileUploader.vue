@@ -110,7 +110,7 @@ const uploadFiles = async (files: File[]) => {
   progress.value = 0
 
   try {
-    const response = await chatAPI.uploadFiles(files, (p) => {
+    const response = await chatAPI.uploadFiles(files, props.sessionId || currentSessionId.value, (p) => {
       progress.value = p
     })
 
