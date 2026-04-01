@@ -131,7 +131,6 @@ class EmbeddingService:
         if not chunks:
             return 0
 
-        self._ensure_embeddings()
         collection = self.get_or_create_collection(kb_id)
 
         # 分批处理嵌入向量（SiliconFlow API限制每批最多32个）
@@ -140,15 +139,8 @@ class EmbeddingService:
 
         for i in range(0, len(chunks), batch_size):
             batch_chunks = chunks[i:i + batch_size]
-            try:
-                batch_embeddings = self.embeddings.embed_documents(batch_chunks)
-                all_embeddings.extend(batch_embeddings)
-            except Exception as e:
-                print(f"嵌入失败，尝试回退: {e}")
-                self._fallback_enabled = False
-                self._ensure_embeddings()
-                batch_embeddings = self.embeddings.embed_documents(batch_chunks)
-                all_embeddings.extend(batch_embeddings)
+            batch_embeddings = self._embed_batch(batch_chunks)
+            all_embeddings.extend(batch_embeddings)
 
         # 生成唯一ID，包含 doc_id 和 chunk_index
         ids = []
@@ -166,6 +158,67 @@ class EmbeddingService:
         )
 
         return len(chunks)
+
+    def _embed_batch(self, chunks: List[str], retry_count: int = 0) -> List[List[float]]:
+        """
+        对一批文本进行嵌入，支持重试和回退
+
+        Args:
+            chunks: 文本块列表
+            retry_count: 当前重试次数
+
+        Returns:
+            嵌入向量列表
+        """
+        max_retries = 2
+
+        try:
+            return self.embeddings.embed_documents(chunks)
+        except Exception as e:
+            error_msg = str(e)
+            print(f"嵌入失败: {e}")
+
+            # 如果是 token 限制错误，尝试进一步分割文本
+            if '512 tokens' in error_msg or 'token' in error_msg.lower():
+                if retry_count < max_retries:
+                    print(f"检测到token限制错误，尝试分割文本后重试...")
+                    smaller_chunks = []
+                    for chunk in chunks:
+                        # 将每个块分成两半
+                        mid = len(chunk) // 2
+                        if mid > 50:  # 确保分割后仍有意义
+                            smaller_chunks.append(chunk[:mid])
+                            smaller_chunks.append(chunk[mid:])
+                        else:
+                            smaller_chunks.append(chunk)
+                    return self._embed_batch(smaller_chunks, retry_count + 1)
+
+            # 如果是批量大小错误，减小批量
+            if 'batch size' in error_msg.lower() and retry_count < max_retries:
+                print(f"检测到批量大小错误，减小批量后重试...")
+                if len(chunks) > 16:
+                    # 分成两半处理
+                    mid = len(chunks) // 2
+                    result = self._embed_batch(chunks[:mid], retry_count + 1)
+                    result.extend(self._embed_batch(chunks[mid:], retry_count + 1))
+                    return result
+
+            # 其他错误或重试次数用尽，尝试回退到本地模型
+            if not self._fallback_enabled:
+                print("回退到使用本地嵌入模型...")
+                try:
+                    self.embeddings = HuggingFaceEmbeddings(
+                        model_name="sentence-transformers/all-MiniLM-L6-v2",
+                        model_kwargs={'device': 'cpu'},
+                        encode_kwargs={'normalize_embeddings': True}
+                    )
+                    self._fallback_enabled = True
+                    print("已成功切换到本地嵌入服务")
+                    return self.embeddings.embed_documents(chunks)
+                except Exception as e2:
+                    print(f"本地嵌入服务也失败: {e2}")
+                    raise RuntimeError("无法完成嵌入，请检查 API 配置或安装 sentence-transformers")
+            raise
 
     def search_similar(self, kb_ids: List[int], query: str, k: int = 4, enabled_only: bool = True) -> List[dict]:
         """
