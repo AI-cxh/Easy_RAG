@@ -102,7 +102,22 @@
       </header>
 
       <!-- 消息区域 -->
-      <div class="chat-messages" ref="messagesRef">
+      <div
+        class="chat-messages"
+        ref="messagesRef"
+        @dragover="handleDragOver"
+        @dragleave="handleDragLeave"
+        @drop="handleDrop"
+      >
+        <!-- 拖拽提示遮罩 -->
+        <div v-if="isDragging" class="drag-overlay">
+          <div class="drag-hint">
+            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+            </svg>
+            <span>释放以上传文件</span>
+          </div>
+        </div>
         <div v-if="!hasUserInteracted" class="welcome-screen">
           <h2 class="welcome-title">欢迎使用 Agentic RAG</h2>
           <p class="welcome-desc">智能Agent驱动的检索问答</p>
@@ -500,6 +515,34 @@ const currentSourceDetails = ref<SourceDetail[]>([])
 // 文件上传相关
 const fileUploaderRef = ref<InstanceType<typeof FileUploader>>()
 const temporaryKbId = ref<number>()
+
+// 拖拽上传
+const isDragging = ref(false)
+
+const handleDragOver = (e: DragEvent) => {
+  e.preventDefault()
+  isDragging.value = true
+}
+
+const handleDragLeave = (e: DragEvent) => {
+  e.preventDefault()
+  isDragging.value = false
+}
+
+const handleDrop = async (e: DragEvent) => {
+  e.preventDefault()
+  isDragging.value = false
+
+  const files = Array.from(e.dataTransfer?.files || [])
+  if (files.length > 0) {
+    try {
+      const result = await chatAPI.uploadFiles(files, (p) => { /* progress */ })
+      handleFileUploaded(result)
+    } catch (error: any) {
+      handleUploadError(error.message || '上传失败')
+    }
+  }
+}
 
 // 打开来源详情边栏
 const openSourceDrawer = (sourceDetails: SourceDetail[]) => {

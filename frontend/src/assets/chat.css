@@ -312,6 +312,21 @@
   color: var(--text-secondary);
 }
 
+.source-tag.clickable {
+  cursor: pointer;
+  transition: all var(--duration-fast);
+}
+
+.source-tag.clickable:hover {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  transform: translateY(-1px);
+}
+
+.source-tag.clickable:active {
+  transform: translateY(0);
+}
+
 .web-sources {
   display: flex;
   flex-wrap: wrap;
@@ -844,4 +859,41 @@
 .edit-actions .btn {
   padding: var(--space-1) var(--space-3);
   font-size: var(--text-xs);
+}
+
+/* 拖拽上传样式 */
+.chat-messages {
+  position: relative;
+}
+
+.drag-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(var(--color-primary-rgb, 59, 130, 246), 0.1);
+  border: 2px dashed var(--color-primary);
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.drag-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-primary);
+}
+
+.drag-hint svg {
+  width: 48px;
+  height: 48px;
+  fill: currentColor;
+}
+
+.drag-hint span {
+  font-size: var(--text-base);
+  font-weight: var(--font-medium);
 }
