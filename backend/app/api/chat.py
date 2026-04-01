@@ -568,7 +568,9 @@ async def upload_chat_files(
                 description="聊天会话临时知识库",
                 is_temporary=True,
                 session_id=session.id,
-                user_id=user.id
+                user_id=user.id,
+                chunk_size=400,  # 限制分块大小以适应嵌入模型的512 token限制
+                chunk_overlap=50
             )
             db.add(temp_kb)
             db.commit()
