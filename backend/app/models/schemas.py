@@ -243,6 +243,7 @@ class ChatMessageResponse(BaseModel):
     created_at: datetime
     # 可选的metadata字段
     sources: Optional[List[str]] = None
+    source_details: Optional[List[dict]] = None  # 新增：详细来源信息
     search_results: Optional[List[dict]] = None
     thinking_steps: Optional[List[dict]] = None
     # 多Agent执行流程数据
@@ -377,3 +378,14 @@ class AgentTaskEvent(BaseModel):
     content: Optional[str] = None
     status: Optional[str] = None
     tasks: Optional[List[dict]] = None
+
+
+# 聊天文件上传相关
+class ChatUploadResponse(BaseModel):
+    """聊天上传响应"""
+    session_id: int
+    kb_id: int
+    documents: List[DocumentResponse]
+
+    class Config:
+        from_attributes = True
