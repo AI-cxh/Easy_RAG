@@ -134,14 +134,21 @@ class EmbeddingService:
         self._ensure_embeddings()
         collection = self.get_or_create_collection(kb_id)
 
-        # 生成嵌入向量
-        try:
-            embeddings = self.embeddings.embed_documents(chunks)
-        except Exception as e:
-            print(f"嵌入失败，尝试回退: {e}")
-            self._fallback_enabled = False
-            self._ensure_embeddings()
-            embeddings = self.embeddings.embed_documents(chunks)
+        # 分批处理嵌入向量（SiliconFlow API限制每批最多32个）
+        batch_size = 32
+        all_embeddings = []
+
+        for i in range(0, len(chunks), batch_size):
+            batch_chunks = chunks[i:i + batch_size]
+            try:
+                batch_embeddings = self.embeddings.embed_documents(batch_chunks)
+                all_embeddings.extend(batch_embeddings)
+            except Exception as e:
+                print(f"嵌入失败，尝试回退: {e}")
+                self._fallback_enabled = False
+                self._ensure_embeddings()
+                batch_embeddings = self.embeddings.embed_documents(batch_chunks)
+                all_embeddings.extend(batch_embeddings)
 
         # 生成唯一ID，包含 doc_id 和 chunk_index
         ids = []
@@ -153,7 +160,7 @@ class EmbeddingService:
         # 添加到ChromaDB
         collection.add(
             ids=ids,
-            embeddings=embeddings,
+            embeddings=all_embeddings,
             documents=chunks,
             metadatas=metadatas
         )
