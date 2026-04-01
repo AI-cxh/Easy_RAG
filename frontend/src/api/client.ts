@@ -386,12 +386,33 @@ export const chunkAPI = {
   }
 }
 
+// 聊天上传响应类型
+export interface ChatUploadResponse {
+  session_id: number
+  kb_id: number
+  documents: Array<{
+    id: number
+    filename: string
+    file_size: number
+    chunk_count: number
+  }>
+}
+
 // 聊天API - 流式响应
+export interface SourceDetail {
+  kb_name: string
+  doc_name: string
+  content: string
+  rerank_score?: number
+  distance?: number
+}
+
 export interface StreamMessage {
   type: 'chunk' | 'end' | 'error'
   content?: string
   session_id?: number
   sources?: string[]
+  source_details?: SourceDetail[]
   search_results?: Array<{ title: string; url: string; snippet?: string }>
   message?: string
 }
@@ -407,7 +428,7 @@ export const chatAPI = {
       session_type?: string
     },
     onChunk: (message: StreamMessage) => void
-  ): Promise<{ sessionId: number; sources?: string[]; searchResults?: any[] }> => {
+  ): Promise<{ sessionId: number; sources?: string[]; sourceDetails?: SourceDetail[]; searchResults?: any[] }> => {
     const response = await authFetch(`${API_BASE_URL}/chat`, {
       method: 'POST',
       headers: {
@@ -430,6 +451,7 @@ export const chatAPI = {
 
     let sessionId: number | undefined
     let sources: string[] | undefined
+    let sourceDetails: SourceDetail[] | undefined
     let searchResults: any[] | undefined
     let buffer = ''
 
@@ -454,6 +476,7 @@ export const chatAPI = {
             if (data.type === 'end') {
               sessionId = data.session_id
               sources = data.sources
+              sourceDetails = data.source_details
               searchResults = data.search_results
             }
           } catch (e) {
@@ -466,6 +489,7 @@ export const chatAPI = {
     return {
       sessionId: sessionId ?? data.session_id ?? 0,
       sources,
+      sourceDetails,
       searchResults
     }
   },
@@ -519,6 +543,70 @@ export const chatAPI = {
       throw new Error(error || '请求失败')
     }
     return response.json()
+  },
+
+  // 聊天上传文件
+  uploadFiles: async (
+    files: File[],
+    onProgress?: (progress: number) => void
+  ): Promise<ChatUploadResponse> => {
+    const formData = new FormData()
+    files.forEach((file) => {
+      formData.append('files', file)
+    })
+
+    // 使用 XMLHttpRequest 来支持上传进度
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', `${API_BASE_URL}/chat/upload`)
+
+      // 添加认证头
+      const token = localStorage.getItem('token')
+      if (token) {
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+      }
+
+      xhr.upload.onprogress = (event) => {
+        if (onProgress && event.lengthComputable) {
+          const progress = Math.round((event.loaded / event.total) * 100)
+          onProgress(progress)
+        }
+      }
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(xhr.response ? JSON.parse(xhr.response) : {})
+        } else if (xhr.status === 401) {
+          localStorage.removeItem('token')
+          localStorage.removeItem('refresh_token')
+          localStorage.removeItem('user')
+          window.location.href = '/login'
+          reject(new Error('登录已过期'))
+        } else {
+          // 尝试解析错误响应
+          let errorMsg = '上传文件失败'
+          try {
+            const errorResponse = xhr.response ? JSON.parse(xhr.response) : null
+            if (errorResponse?.detail) {
+              errorMsg = errorResponse.detail
+            } else if (xhr.statusText) {
+              errorMsg = xhr.statusText
+            }
+          } catch {
+            if (xhr.statusText) {
+              errorMsg = xhr.statusText
+            }
+          }
+          reject(new Error(errorMsg))
+        }
+      }
+
+      xhr.onerror = () => {
+        reject(new Error('上传文件失败'))
+      }
+
+      xhr.send(formData)
+    })
   }
 }
 
@@ -566,6 +654,7 @@ export interface AgentStreamMessage {
   }>
   search_results?: Array<{ title: string; url: string; snippet?: string }>
   sources?: string[]
+  source_details?: SourceDetail[]
   message?: string
 }
 
@@ -593,6 +682,7 @@ export const agentAPI = {
     thinkingSteps?: ThinkingStep[]
     searchResults?: Array<{ title: string; url: string; snippet?: string }>
     sources?: string[]
+    sourceDetails?: SourceDetail[]
   }> => {
     const response = await authFetch(`${API_BASE_URL}/chat/agent`, {
       method: 'POST',
@@ -619,6 +709,7 @@ export const agentAPI = {
     let thinkingSteps: ThinkingStep[] = []
     let searchResults: Array<{ title: string; url: string; snippet?: string }> = []
     let sources: string[] = []
+    let sourceDetails: SourceDetail[] = []
     let buffer = ''
 
     while (true) {
@@ -644,6 +735,7 @@ export const agentAPI = {
               thinkingSteps = msgData.thinking_steps || []
               searchResults = msgData.search_results || []
               sources = msgData.sources || []
+              sourceDetails = msgData.source_details || []
             }
           } catch (e) {
             console.error('Failed to parse SSE data:', e)
@@ -656,7 +748,8 @@ export const agentAPI = {
       sessionId: sessionId || data.session_id!,
       thinkingSteps,
       searchResults,
-      sources
+      sources,
+      sourceDetails
     }
   }
 }
@@ -796,6 +889,7 @@ export interface MultiAgentStreamMessage {
   }>
   session_id?: number
   sources?: string[]
+  source_details?: SourceDetail[]
   search_results?: Array<{ title: string; url: string; snippet?: string }>
 }
 
@@ -821,6 +915,7 @@ export const multiAgentAPI = {
   ): Promise<{
     sessionId: number
     sources?: string[]
+    sourceDetails?: SourceDetail[]
     searchResults?: Array<{ title: string; url: string; snippet?: string }>
   }> => {
     const response = await authFetch(`${API_BASE_URL}/chat/multi-agent`, {
@@ -846,6 +941,7 @@ export const multiAgentAPI = {
 
     let sessionId: number | undefined
     let sources: string[] = []
+    let sourceDetails: SourceDetail[] = []
     let searchResults: Array<{ title: string; url: string; snippet?: string }> = []
     let buffer = ''
 
@@ -867,6 +963,7 @@ export const multiAgentAPI = {
             if (msgData.type === 'done') {
               sessionId = msgData.session_id
               sources = msgData.sources || []
+              sourceDetails = msgData.source_details || []
               searchResults = msgData.search_results || []
             }
           } catch (e) {
@@ -879,6 +976,7 @@ export const multiAgentAPI = {
     return {
       sessionId: sessionId || data.session_id!,
       sources,
+      sourceDetails,
       searchResults
     }
   },
