@@ -14,17 +14,33 @@ class EmbeddingService:
 
     def __init__(self):
         """初始化嵌入服务"""
-        # 使用嵌入专用的配置，如果未设置则使用聊天配置
-        embedding_api_key = settings.EMBEDDING_API_KEY or settings.OPENAI_API_KEY
-        embedding_api_base = settings.EMBEDDING_API_BASE or settings.OPENAI_API_BASE
-
-        # 尝试使用 OpenAI 兼容的嵌入服务
-        self.embeddings = OpenAIEmbeddings(
-            model=settings.EMBEDDING_MODEL,
-            openai_api_key=embedding_api_key,
-            openai_api_base=embedding_api_base
+        # 判断是否使用本地 HuggingFace 模型
+        # 如果 EMBEDDING_MODEL 以 "BAAI/" 或 "sentence-transformers/" 开头，使用本地模型
+        use_local_model = (
+            settings.EMBEDDING_MODEL.startswith("BAAI/") or
+            settings.EMBEDDING_MODEL.startswith("sentence-transformers/")
         )
-        self._fallback_enabled = False  # 标记是否已启用回退
+
+        if use_local_model:
+            # 使用本地 HuggingFace 模型
+            print(f"使用本地嵌入模型: {settings.EMBEDDING_MODEL}")
+            self.embeddings = HuggingFaceEmbeddings(
+                model_name=settings.EMBEDDING_MODEL,
+                model_kwargs={'device': 'cpu'},
+                encode_kwargs={'normalize_embeddings': True}
+            )
+            self._fallback_enabled = True
+        else:
+            # 使用 OpenAI 兼容的嵌入服务
+            embedding_api_key = settings.EMBEDDING_API_KEY or settings.OPENAI_API_KEY
+            embedding_api_base = settings.EMBEDDING_API_BASE or settings.OPENAI_API_BASE
+            print(f"使用远程嵌入服务: {embedding_api_base}, 模型: {settings.EMBEDDING_MODEL}")
+            self.embeddings = OpenAIEmbeddings(
+                model=settings.EMBEDDING_MODEL,
+                openai_api_key=embedding_api_key,
+                openai_api_base=embedding_api_base
+            )
+            self._fallback_enabled = False  # 标记是否已启用回退
 
         # 默认分块器（使用系统默认值）
         self.default_text_splitter = RecursiveCharacterTextSplitter(
@@ -77,17 +93,17 @@ class EmbeddingService:
             _ = self.embeddings.embed_query("test")
         except Exception as e:
             print(f"OpenAI 嵌入服务失败: {e}")
-            print("回退到使用 HuggingFace 免费嵌入服务...")
+            print("回退到使用本地 BGE 嵌入模型...")
             try:
                 self.embeddings = HuggingFaceEmbeddings(
-                    model_name="sentence-transformers/all-MiniLM-L6-v2",
+                    model_name="BAAI/bge-m3",
                     model_kwargs={'device': 'cpu'},
                     encode_kwargs={'normalize_embeddings': True}
                 )
                 self._fallback_enabled = True
-                print("已成功切换到本地嵌入服务")
+                print("已成功切换到本地 BGE 嵌入服务")
             except Exception as e2:
-                print(f"HuggingFace 嵌入服务也失败: {e2}")
+                print(f"BGE 嵌入服务也失败: {e2}")
                 raise RuntimeError("无法初始化嵌入服务，请检查 API 配置或安装 sentence-transformers")
 
     def split_text(self, text: str, chunk_size: Optional[int] = None, chunk_overlap: Optional[int] = None) -> List[str]:
