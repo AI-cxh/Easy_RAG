@@ -38,6 +38,8 @@ class KnowledgeBase(Base):
     embedding_model = Column(String(255), default="text-embedding-ada-002")
     owner = Column(String(100), default="")
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    is_temporary = Column(Boolean, default=False)
+    session_id = Column(Integer, ForeignKey("chat_sessions.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
