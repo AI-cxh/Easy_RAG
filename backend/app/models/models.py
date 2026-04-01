@@ -39,13 +39,14 @@ class KnowledgeBase(Base):
     owner = Column(String(100), default="")
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     is_temporary = Column(Boolean, default=False)
-    session_id = Column(Integer, ForeignKey("chat_sessions.id"), nullable=True)
+    session_id = Column(Integer, ForeignKey("chat_sessions.id"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # 关系
     documents = relationship("Document", back_populates="knowledge_base", cascade="all, delete-orphan")
     user = relationship("User", back_populates="knowledge_bases", foreign_keys=[user_id])
+    session = relationship("ChatSession", back_populates="temporary_knowledge_base", foreign_keys=[session_id])
 
 
 class Document(Base):
@@ -103,6 +104,7 @@ class ChatSession(Base):
     # 关系
     messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
     user = relationship("User", back_populates="chat_sessions")
+    temporary_knowledge_base = relationship("KnowledgeBase", back_populates="session", foreign_keys="KnowledgeBase.session_id")
 
 
 class ChatMessage(Base):

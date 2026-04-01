@@ -24,6 +24,13 @@
 - **流式响应** - 所有对话模式支持 SSE 流式输出
 - **响应式设计** - 支持桌面和移动设备
 
+### 用户管理
+
+- **用户认证** - 支持用户注册、登录、JWT Token 认证
+- **角色权限** - 管理员和普通用户角色区分
+- **用户管理** - 管理员可管理用户状态、重置密码等
+- **初始化向导** - 首次启动自动进入管理员初始化流程
+
 ## 技术栈
 
 | 层级 | 技术 |
@@ -50,6 +57,7 @@ agentic_RAG/
 │   │   │   ├── models.py        # SQLAlchemy 模型
 │   │   │   └── schemas.py       # Pydantic 模型
 │   │   ├── api/
+│   │   │   ├── auth.py          # 认证 API（注册、登录、用户管理）
 │   │   │   ├── chat.py          # 聊天 API
 │   │   │   ├── knowledge.py     # 知识库 API
 │   │   │   ├── upload.py        # 文件上传 API
@@ -64,6 +72,7 @@ agentic_RAG/
 │   │   │   ├── rerank.py        # 重排序服务
 │   │   │   ├── agent.py         # 单 Agent 服务
 │   │   │   ├── tools.py         # 内置工具定义
+│   │   │   ├── auth.py          # 认证服务（密码哈希、JWT）
 │   │   │   ├── mcp_client.py    # MCP 客户端
 │   │   │   └── multi_agent/     # 多 Agent 模块
 │   │   │       ├── orchestrator.py    # 主控 Agent
@@ -81,20 +90,29 @@ agentic_RAG/
 ├── frontend/
 │   ├── src/
 │   │   ├── views/
-│   │   │   ├── ChatRAG.vue       # RAG 对话页面
-│   │   │   ├── ChatAgentic.vue   # Agent 对话页面
+│   │   │   ├── Login.vue        # 登录页面
+│   │   │   ├── Register.vue     # 注册页面
+│   │   │   ├── InitAdmin.vue    # 管理员初始化页面
+│   │   │   ├── UserManagement.vue # 用户管理页面（管理员）
+│   │   │   ├── ChatRAG.vue      # RAG 对话页面
+│   │   │   ├── ChatAgentic.vue  # Agent 对话页面
 │   │   │   ├── ChatMultiAgent.vue # 多 Agent 对话页面
 │   │   │   ├── KnowledgeList.vue # 知识库列表页面
 │   │   │   ├── DocumentList.vue  # 文档列表页面
 │   │   │   ├── ChunkList.vue     # 分块列表页面
 │   │   │   └── Settings.vue      # 设置页面
 │   │   ├── components/
+│   │   │   ├── AppNavRail.vue    # 导航栏组件
+│   │   │   ├── AppSidebar.vue    # 侧边栏组件
 │   │   │   ├── AgentFlow.vue     # Agent 执行流程可视化
 │   │   │   ├── AgentThinking.vue # Agent 思考过程展示
-│   │   │   ├── Pagination.vue    # 分页组件
-│   │   │   ├── Breadcrumb.vue    # 面包屑导航
+│   │   │   ├── SourceDrawer.vue  # 来源详情抽屉
 │   │   │   ├── ToolsPanel.vue    # 工具面板
+│   │   │   ├── Pagination.vue    # 分页组件
 │   │   │   └── ...
+│   │   ├── composables/
+│   │   │   ├── useAuth.ts        # 认证组合式函数
+│   │   │   └── useSession.ts     # 会话管理组合式函数
 │   │   ├── api/
 │   │   │   └── client.ts         # API 客户端
 │   │   └── router/
@@ -173,6 +191,29 @@ npm run dev
 
 ## 使用说明
 
+### 用户认证
+
+#### 首次启动
+
+1. 首次访问应用会自动跳转到管理员初始化页面
+2. 设置管理员用户名、邮箱和密码
+3. 完成后使用管理员账号登录
+
+#### 用户注册与登录
+
+1. 访问登录页面，点击"注册账号"
+2. 填写用户名、邮箱和密码
+3. 注册成功后需要管理员审核通过才能登录
+4. 管理员可在"用户管理"页面审核用户
+
+#### 用户管理（管理员）
+
+1. 访问"用户管理"页面
+2. 查看所有用户列表和状态
+3. 审核新注册用户（通过/拒绝）
+4. 启用/禁用用户账号
+5. 重置用户密码
+
 ### 知识库管理
 
 Easy RAG 采用三层级管理架构：
@@ -210,6 +251,11 @@ Easy RAG 采用三层级管理架构：
 2. 在左侧选择要使用的知识库（可多选）
 3. 可选：开启"网络搜索"
 4. 输入问题，获取基于知识库的回答
+5. 点击"参考来源"标签查看详细的文档来源信息，包括：
+   - 知识库名称
+   - 文档名称
+   - 相关度评分
+   - 文档内容片段
 
 ### Agent 模式
 
@@ -217,6 +263,7 @@ Easy RAG 采用三层级管理架构：
 2. Agent 会自主决定是否需要检索知识库或搜索网络
 3. 可查看 Agent 的思考过程和工具调用记录
 4. 支持多轮对话和上下文理解
+5. 点击参考来源标签查看详细来源信息
 
 ### 多 Agent 协同
 
@@ -248,6 +295,21 @@ Easy RAG 采用三层级管理架构：
 ```
 
 ## API 端点
+
+### 认证相关
+
+| 端点 | 方法 | 描述 |
+|------|------|------|
+| `/api/auth/register` | POST | 用户注册 |
+| `/api/auth/login` | POST | 用户登录 |
+| `/api/auth/refresh` | POST | 刷新 Token |
+| `/api/auth/me` | GET | 获取当前用户信息 |
+| `/api/auth/password` | PUT | 修改密码 |
+| `/api/auth/init-admin` | POST | 初始化管理员（仅首次） |
+| `/api/auth/users` | GET | 获取用户列表（管理员） |
+| `/api/auth/users/{id}` | GET/PUT | 用户详情/更新（管理员） |
+| `/api/auth/users/{id}/status` | PUT | 更新用户状态（管理员） |
+| `/api/auth/users/{id}/reset-password` | POST | 重置用户密码（管理员） |
 
 ### 聊天相关
 
@@ -391,6 +453,21 @@ rm -rf backend/chroma_db
 - 确保已运行数据库迁移脚本
 - 检查 ChromaDB 中的 metadata 是否包含 `enabled` 字段
 - 尝试重建向量
+
+### 登录问题
+- 确保已初始化管理员账号
+- 检查用户状态是否为"active"（管理员审核通过）
+- 清除浏览器缓存和 Token 后重试
+
+## 更新日志
+
+### v1.1.0
+- 新增用户认证系统：注册、登录、JWT Token 认证
+- 新增用户管理功能：管理员审核、状态管理、密码重置
+- 新增管理员初始化向导
+- 优化参考来源显示：支持详情抽屉展示文档内容
+- 修复来源标签重复显示问题
+- 改进 UI/UX：统一导航栏、优化响应式布局
 
 ## 许可证
 

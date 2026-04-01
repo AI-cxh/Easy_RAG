@@ -117,11 +117,13 @@ async def upload_file(
         db.add(document)
         db.flush()  # 获取 document.id
 
-        # 准备元数据 - 包含 doc_id 和 enabled
+        # 准备元数据 - 包含 doc_id、kb_name 和 enabled
         metadatas = [
             {
                 "source": f"{file.filename}[{i+1}]",
                 "doc_id": document.id,
+                "kb_id": kb_id,
+                "kb_name": knowledge_base.name,
                 "chunk_index": i,
                 "enabled": True
             }

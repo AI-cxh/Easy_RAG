@@ -40,19 +40,7 @@
       <div
         class="chat-messages"
         ref="messagesRef"
-        @dragover="handleDragOver"
-        @dragleave="handleDragLeave"
-        @drop="handleDrop"
       >
-        <!-- 拖拽提示遮罩 -->
-        <div v-if="isDragging" class="drag-overlay">
-          <div class="drag-hint">
-            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
-            </svg>
-            <span>释放以上传文件</span>
-          </div>
-        </div>
         <div v-if="!hasUserInteracted" class="welcome-screen">
           <h2 class="welcome-title">欢迎使用Easy RAG</h2>
           <p class="welcome-desc">基于知识库的传统检索问答</p>
@@ -234,13 +222,6 @@
             ></textarea>
             <div class="input-toolbar">
               <div class="toolbar-left">
-                <!-- 文件上传 -->
-                <FileUploader
-                  ref="fileUploaderRef"
-                  :session-id="currentSessionId"
-                  @uploaded="handleFileUploaded"
-                  @error="handleUploadError"
-                />
                 <!-- 知识库选择 -->
                 <div class="kb-dropdown">
                   <button
@@ -339,7 +320,6 @@ import katex from 'katex'
 import AppNavRail from '../components/AppNavRail.vue'
 import AppSidebar from '../components/AppSidebar.vue'
 import SourceDrawer from '../components/SourceDrawer.vue'
-import FileUploader from '../components/FileUploader.vue'
 import 'highlight.js/styles/github-dark.css'
 import 'katex/dist/katex.min.css'
 
@@ -387,38 +367,6 @@ const editInputRef = ref<HTMLTextAreaElement>()
 // 来源详情边栏
 const showSourceDrawer = ref(false)
 const currentSourceDetails = ref<SourceDetail[]>([])
-
-// 文件上传相关
-const fileUploaderRef = ref<InstanceType<typeof FileUploader>>()
-const temporaryKbId = ref<number>()
-
-// 拖拽上传
-const isDragging = ref(false)
-
-const handleDragOver = (e: DragEvent) => {
-  e.preventDefault()
-  isDragging.value = true
-}
-
-const handleDragLeave = (e: DragEvent) => {
-  e.preventDefault()
-  isDragging.value = false
-}
-
-const handleDrop = async (e: DragEvent) => {
-  e.preventDefault()
-  isDragging.value = false
-
-  const files = Array.from(e.dataTransfer?.files || [])
-  if (files.length > 0) {
-    try {
-      const result = await chatAPI.uploadFiles(files, (p) => { /* progress */ })
-      handleFileUploaded(result)
-    } catch (error: any) {
-      handleUploadError(error.message || '上传失败')
-    }
-  }
-}
 
 // 配置 marked
 marked.setOptions({
@@ -483,19 +431,6 @@ const getUniqueKbNames = (sourceDetails: SourceDetail[]): string[] => {
   return [...new Set(kbNames)]
 }
 
-// 处理文件上传成功
-const handleFileUploaded = (data: { sessionId: number; kbId: number; files: any[] }) => {
-  temporaryKbId.value = data.kbId
-  if (!currentSessionId.value) {
-    currentSessionId.value = data.sessionId
-  }
-}
-
-// 处理上传错误
-const handleUploadError = (message: string) => {
-  console.error('Upload error:', message)
-}
-
 // 自动调整输入框高度
 const autoResize = () => {
   if (inputRef.value) {
@@ -552,8 +487,6 @@ const newChat = () => {
   messages.value = []
   hasUserInteracted.value = false
   sidebarOpen.value = false
-  temporaryKbId.value = undefined
-  fileUploaderRef.value?.clearFiles()
 }
 
 // 知识库操作
@@ -670,10 +603,7 @@ const handleSend = async () => {
       {
         message,
         session_id: currentSessionId.value,
-        kb_ids: [
-          ...(temporaryKbId.value ? [temporaryKbId.value] : []),
-          ...selectedKbIds.value
-        ],
+        kb_ids: selectedKbIds.value,
         use_web_search: useWebSearch.value,
         session_type: SESSION_TYPE
       },

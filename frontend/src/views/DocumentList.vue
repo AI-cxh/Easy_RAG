@@ -138,7 +138,7 @@
                       <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
                     </svg>
                   </button>
-                  <button class="btn-icon btn-icon-sm delete-btn" @click="deleteDocument(doc.id)" title="删除">
+                  <button class="btn-icon btn-icon-sm delete-btn" @click="deleteDocument(doc)" title="删除">
                     <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                       <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
                     </svg>
@@ -159,6 +159,34 @@
         @update:page="handlePageChange"
       />
     </div>
+
+    <!-- 删除确认对话框 -->
+    <Teleport to="body">
+      <div v-if="deletingDoc" class="dialog-overlay" @click.self="cancelDelete">
+        <div class="dialog dialog-danger">
+          <div class="dialog-header">
+            <div class="dialog-icon">
+              <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+              </svg>
+            </div>
+            <h3 class="dialog-title">删除文档</h3>
+            <button class="dialog-close" @click="cancelDelete">&times;</button>
+          </div>
+          <div class="dialog-body">
+            <p class="dialog-message">确定要删除文档 "<strong>{{ deletingDoc.filename }}</strong>" 吗？</p>
+            <p class="dialog-hint">删除后将同时删除关联的分块数据，此操作无法撤销。</p>
+          </div>
+          <div class="dialog-footer">
+            <button class="btn btn-secondary" @click="cancelDelete">取消</button>
+            <button class="btn btn-danger" @click="confirmDelete" :disabled="deleting">
+              <span v-if="deleting" class="spinner-sm"></span>
+              {{ deleting ? '删除中...' : '删除' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -207,6 +235,10 @@ const statusFilter = ref('')
 const fileInputRef = ref<HTMLInputElement>()
 const uploadProgress = ref<number | null>(null)
 const uploadingFiles = ref<string[]>([]) // 正在上传的文件名列表
+
+// 删除确认对话框
+const deletingDoc = ref<Document | null>(null)
+const deleting = ref(false)
 
 const breadcrumbItems = computed(() => [
   { label: '知识库管理', to: '/knowledge' },
@@ -328,15 +360,29 @@ const downloadDocument = (doc: Document) => {
   link.click()
 }
 
-const deleteDocument = async (docId: number) => {
-  if (!confirm('确定要删除该文档吗？')) return
+const deleteDocument = (doc: Document) => {
+  deletingDoc.value = doc
+}
+
+const cancelDelete = () => {
+  deletingDoc.value = null
+}
+
+const confirmDelete = async () => {
+  if (!deletingDoc.value) return
+
+  const docId = deletingDoc.value.id
+  deleting.value = true
 
   try {
     await uploadAPI.deleteDocument(docId)
     await loadDocuments()
+    deletingDoc.value = null
   } catch (error) {
     console.error('Failed to delete document:', error)
     alert(error instanceof Error ? error.message : '删除失败')
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -673,5 +719,157 @@ onMounted(() => {
 .action-btns {
   display: flex;
   gap: var(--space-1);
+}
+
+/* 删除按钮悬停 */
+.delete-btn:hover {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+/* 对话框样式 */
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.dialog {
+  background: var(--bg-elevated);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  width: min(420px, 90vw);
+  animation: slideUp 0.2s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.dialog-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-danger-light);
+  border-radius: var(--radius-lg);
+}
+
+.dialog-icon svg {
+  width: 24px;
+  height: 24px;
+  fill: var(--color-danger);
+}
+
+.dialog-title {
+  flex: 1;
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.dialog-close {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: 20px;
+  cursor: pointer;
+  transition: all var(--duration-fast);
+}
+
+.dialog-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.dialog-body {
+  padding: var(--space-5);
+}
+
+.dialog-message {
+  margin: 0;
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  line-height: 1.6;
+}
+
+.dialog-message strong {
+  color: var(--color-danger);
+  font-weight: var(--font-semibold);
+}
+
+.dialog-hint {
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+  border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+}
+
+.btn-danger {
+  background: var(--color-danger);
+  color: white;
+  border: 1px solid var(--color-danger);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+
+.btn-danger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.spinner-sm {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-right: var(--space-2);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 </style>

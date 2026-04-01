@@ -105,19 +105,7 @@
       <div
         class="chat-messages"
         ref="messagesRef"
-        @dragover="handleDragOver"
-        @dragleave="handleDragLeave"
-        @drop="handleDrop"
       >
-        <!-- 拖拽提示遮罩 -->
-        <div v-if="isDragging" class="drag-overlay">
-          <div class="drag-hint">
-            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
-            </svg>
-            <span>释放以上传文件</span>
-          </div>
-        </div>
         <div v-if="!hasUserInteracted" class="welcome-screen">
           <h2 class="welcome-title">欢迎使用 Agentic RAG</h2>
           <p class="welcome-desc">智能Agent驱动的检索问答</p>
@@ -299,39 +287,26 @@
               @input="autoResize"
               ref="inputRef"
             ></textarea>
-            <div class="input-toolbar">
-              <div class="toolbar-left">
-                <!-- 文件上传 -->
-                <FileUploader
-                  ref="fileUploaderRef"
-                  :session-id="currentSessionId"
-                  @uploaded="handleFileUploaded"
-                  @error="handleUploadError"
-                />
-              </div>
-              <div class="toolbar-right">
-                <button
-                  v-if="isSending"
-                  class="stop-btn"
-                  @click="stopGeneration"
-                  title="停止生成"
-                >
-                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M6 6h12v12H6z"/>
-                  </svg>
-                </button>
-                <button
-                  v-else
-                  class="send-btn"
-                  :disabled="!inputMessage.trim()"
-                  @click="handleSend"
-                >
-                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
+            <button
+              v-if="isSending"
+              class="stop-btn"
+              @click="stopGeneration"
+              title="停止生成"
+            >
+              <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M6 6h12v12H6z"/>
+              </svg>
+            </button>
+            <button
+              v-else
+              class="send-btn"
+              :disabled="!inputMessage.trim()"
+              @click="handleSend"
+            >
+              <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+              </svg>
+            </button>
           </div>
         </div>
       </div>
@@ -419,7 +394,6 @@ import AppNavRail from '../components/AppNavRail.vue'
 import AgentThinking from '../components/AgentThinking.vue'
 import ToolsPanel from '../components/ToolsPanel.vue'
 import SourceDrawer from '../components/SourceDrawer.vue'
-import FileUploader from '../components/FileUploader.vue'
 import 'highlight.js/styles/github-dark.css'
 import 'katex/dist/katex.min.css'
 
@@ -512,39 +486,7 @@ const editInputRef = ref<HTMLTextAreaElement>()
 const showSourceDrawer = ref(false)
 const currentSourceDetails = ref<SourceDetail[]>([])
 
-// 文件上传相关
-const fileUploaderRef = ref<InstanceType<typeof FileUploader>>()
-const temporaryKbId = ref<number>()
-
-// 拖拽上传
-const isDragging = ref(false)
-
-const handleDragOver = (e: DragEvent) => {
-  e.preventDefault()
-  isDragging.value = true
-}
-
-const handleDragLeave = (e: DragEvent) => {
-  e.preventDefault()
-  isDragging.value = false
-}
-
-const handleDrop = async (e: DragEvent) => {
-  e.preventDefault()
-  isDragging.value = false
-
-  const files = Array.from(e.dataTransfer?.files || [])
-  if (files.length > 0) {
-    try {
-      const result = await chatAPI.uploadFiles(files, (p) => { /* progress */ })
-      handleFileUploaded(result)
-    } catch (error: any) {
-      handleUploadError(error.message || '上传失败')
-    }
-  }
-}
-
-// 打开来源详情边栏
+// 配置 marked
 const openSourceDrawer = (sourceDetails: SourceDetail[]) => {
   currentSourceDetails.value = sourceDetails
   showSourceDrawer.value = true
@@ -555,19 +497,6 @@ const getUniqueKbNames = (sourceDetails: SourceDetail[]): string[] => {
   if (!sourceDetails || sourceDetails.length === 0) return []
   const kbNames = sourceDetails.map(s => s.kb_name).filter(Boolean)
   return [...new Set(kbNames)]
-}
-
-// 处理文件上传成功
-const handleFileUploaded = (data: { sessionId: number; kbId: number; files: any[] }) => {
-  temporaryKbId.value = data.kbId
-  if (!currentSessionId.value) {
-    currentSessionId.value = data.sessionId
-  }
-}
-
-// 处理上传错误
-const handleUploadError = (message: string) => {
-  console.error('Upload error:', message)
 }
 
 // 配置 marked
@@ -688,8 +617,6 @@ const newChat = () => {
   messages.value = []
   hasUserInteracted.value = false
   sidebarOpen.value = false
-  temporaryKbId.value = undefined
-  fileUploaderRef.value?.clearFiles()
 }
 
 // 复制消息
@@ -807,7 +734,7 @@ const handleSend = async () => {
       {
         message,
         session_id: currentSessionId.value,
-        kb_ids: temporaryKbId.value ? [temporaryKbId.value] : [],
+        kb_ids: [],
         show_thinking: true
       },
       (chunk) => {
@@ -1357,33 +1284,22 @@ onMounted(() => {
 
 /* 输入框行内布局 */
 .input-box {
-  flex-direction: column;
-  align-items: stretch;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  gap: var(--space-2);
 }
 
 .input-box .textarea {
-  padding-right: 0;
+  flex: 1;
+  min-height: 44px;
+  max-height: 150px;
+  resize: none;
 }
 
-/* 输入工具栏 */
-.input-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-2) var(--space-3);
-  border-top: 1px solid var(--border-subtle);
-  gap: var(--space-2);
-}
-
-.toolbar-left {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.toolbar-right {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
+.input-box .send-btn,
+.input-box .stop-btn {
+  flex-shrink: 0;
+  margin-bottom: 6px;
 }
 </style>

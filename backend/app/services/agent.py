@@ -279,10 +279,35 @@ MCP工具（可用）：
 
                     # 发送收集到的搜索结果
                     if collected_search_results or collected_sources:
+                        # 构建 source_details
+                        source_details = []
+                        kb_names = []
+                        for src in collected_sources:
+                            if isinstance(src, dict):
+                                source_details.append({
+                                    "kb_name": src.get("kb_name", "未知知识库"),
+                                    "doc_name": src.get("doc_name") or src.get("source", "未知文档"),
+                                    "content": src.get("content", ""),
+                                    "rerank_score": src.get("rerank_score")
+                                })
+                                kb_name = src.get("kb_name", "未知知识库")
+                                if kb_name not in kb_names:
+                                    kb_names.append(kb_name)
+                            else:
+                                # 兼容旧格式（字符串）
+                                source_details.append({
+                                    "kb_name": str(src),
+                                    "doc_name": str(src),
+                                    "content": ""
+                                })
+                                if str(src) not in kb_names:
+                                    kb_names.append(str(src))
+
                         yield {
                             "type": "search_data",
                             "search_results": collected_search_results if collected_search_results else None,
-                            "sources": list(set(collected_sources)) if collected_sources else None
+                            "sources": kb_names if kb_names else None,
+                            "source_details": source_details if source_details else None
                         }
                     return
 
@@ -353,19 +378,40 @@ MCP工具（可用）：
         return {"type": "web_search", "results": search_results}
 
     def _parse_knowledge_search_result(self, result: str) -> Dict:
-        """解析知识库搜索结果，提取来源"""
-        sources = []
-        # 解析格式: [文档1] 来源: xxx
+        """解析知识库搜索结果，提取来源详情"""
+        source_details = []
+        # 解析格式: [文档1] 来源: xxx|kb_name (相关度: 0.xxx)\n内容: xxx
         import re
-        pattern = r'\[文档\d+\] 来源: ([^\n(]+)'
-        matches = re.findall(pattern, result)
+        # 匹配完整的文档块
+        doc_pattern = r'\[文档\d+\] 来源: ([^|\n]+)\|([^(\n]+)(?:\s*\(相关度:\s*([\d.]+)\))?\n内容: (.*?)(?=\n\n---|\Z)'
+        doc_matches = re.findall(doc_pattern, result, re.DOTALL)
 
-        for source in matches:
+        for source, kb_name, rerank_score, content in doc_matches:
             source = source.strip()
-            if source and source not in sources:
-                sources.append(source)
+            kb_name = kb_name.strip()
+            content = content.strip()
+            source_details.append({
+                "doc_name": source,  # 前端期望的字段名
+                "kb_name": kb_name,
+                "content": content,  # 添加内容字段
+                "rerank_score": float(rerank_score) if rerank_score else None
+            })
 
-        return {"type": "knowledge_search", "sources": sources}
+        # 兼容旧格式（没有 kb_name 或内容）
+        if not source_details:
+            old_pattern = r'\[文档\d+\] 来源: ([^\n(]+)'
+            old_matches = re.findall(old_pattern, result)
+            for source in old_matches:
+                source = source.strip()
+                if source:
+                    source_details.append({
+                        "doc_name": source,
+                        "kb_name": source.split('[')[0] if '[' in source else source,
+                        "content": "",
+                        "rerank_score": None
+                    })
+
+        return {"type": "knowledge_search", "sources": source_details}
 
     async def run_simple(
         self,

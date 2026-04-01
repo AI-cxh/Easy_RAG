@@ -13,7 +13,18 @@
       "Bash(python:*)",
       "Bash(curl -s http://localhost:9000/api/knowledge)",
       "Bash(npx tsc:*)",
-      "Bash(ls -la /home/chenxuhao/project/agentic_RAG/*.md)"
+      "Bash(ls -la /home/chenxuhao/project/agentic_RAG/*.md)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git:*)",
+      "WebSearch",
+      "Bash(sqlite3 rag.db \"SELECT id, name, chunk_size, chunk_overlap FROM knowledge_bases;\")",
+      "Bash(sqlite3 rag.db \"UPDATE knowledge_bases SET chunk_size = 200 WHERE id IN \\(2, 3\\);\")",
+      "Bash(sqlite3 rag.db \"UPDATE knowledge_bases SET chunk_overlap = 50 WHERE id IN \\(2, 3\\);\")",
+      "Bash(sqlite3 rag.db \"UPDATE knowledge_bases SET chunk_size = 1000, chunk_overlap = 200 WHERE id IN \\(2, 3\\);\")",
+      "Bash(sqlite3 rag.db \"UPDATE knowledge_bases SET chunk_size = 200, chunk_overlap = 50;\")",
+      "Bash(python3:*)",
+      "Bash(sqlite3 rag.db \"UPDATE knowledge_bases SET chunk_size = 1000, chunk_overlap = 200;\")"
     ]
   }
 }

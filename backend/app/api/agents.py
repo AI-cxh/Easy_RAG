@@ -350,6 +350,7 @@ async def multi_agent_chat(
         # 执行并流式返回
         full_response = ""
         all_sources = []
+        all_source_details = []
         all_search_results = []
         # 收集多Agent执行流程数据
         agent_plan = []
@@ -370,7 +371,26 @@ async def multi_agent_chat(
                     if result:
                         # result 现在是字典
                         if result.get("sources"):
-                            all_sources.extend(result["sources"])
+                            # sources 现在是字典列表
+                            for src in result["sources"]:
+                                if isinstance(src, dict):
+                                    all_source_details.append({
+                                        "kb_name": src.get("kb_name", "未知知识库"),
+                                        "doc_name": src.get("doc_name") or src.get("source", "未知文档"),
+                                        "content": src.get("content", ""),
+                                        "rerank_score": src.get("rerank_score")
+                                    })
+                                    kb_name = src.get("kb_name", "未知知识库")
+                                    if kb_name not in all_sources:
+                                        all_sources.append(kb_name)
+                                elif isinstance(src, str):
+                                    # 兼容旧格式
+                                    all_sources.append(src)
+                                    all_source_details.append({
+                                        "kb_name": src,
+                                        "doc_name": src,
+                                        "content": ""
+                                    })
                         if result.get("search_results"):
                             all_search_results.extend(result["search_results"])
 
@@ -419,7 +439,9 @@ async def multi_agent_chat(
         # 保存助手消息
         extra_data = {}
         if all_sources:
-            extra_data["sources"] = list(set(all_sources))
+            extra_data["sources"] = all_sources
+        if all_source_details:
+            extra_data["source_details"] = all_source_details
         if all_search_results:
             extra_data["search_results"] = all_search_results
         # 保存多Agent执行流程数据
@@ -443,7 +465,8 @@ async def multi_agent_chat(
         done_event = json.dumps({
             "type": "done",
             "session_id": session.id,
-            "sources": list(set(all_sources)) if all_sources else None,
+            "sources": all_sources if all_sources else None,
+            "source_details": all_source_details if all_source_details else None,
             "search_results": all_search_results if all_search_results else None
         }, ensure_ascii=False)
         yield f"data: {done_event}\n\n"

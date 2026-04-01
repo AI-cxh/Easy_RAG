@@ -108,9 +108,13 @@ async def create_chunk(
 
     # 同步到向量库
     kb_id = document.kb_id
+    knowledge_base = db.query(KnowledgeBase).filter(KnowledgeBase.id == kb_id).first()
+    kb_name = knowledge_base.name if knowledge_base else "未知知识库"
     metadatas = [{
         "source": f"{document.filename}[new]",
         "doc_id": doc_id,
+        "kb_id": kb_id,
+        "kb_name": kb_name,
         "chunk_index": chunk.sort_order,
         "enabled": True
     }]

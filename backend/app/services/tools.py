@@ -38,12 +38,15 @@ def knowledge_search(kb_ids: List[int], query: str, top_k: int = 4) -> str:
         if rerank_service.is_enabled():
             similar_docs = rerank_service.rerank_sync(query, similar_docs, top_k=top_k)
 
-        # 格式化结果
+        # 格式化结果，包含详细的元数据信息
         results = []
         for i, doc in enumerate(similar_docs[:top_k], 1):
-            source = doc['metadata'].get('source', '未知来源')
+            metadata = doc.get('metadata', {})
+            source = metadata.get('source', '未知来源')
+            kb_name = metadata.get('kb_name', '未知知识库')
             rerank_info = f" (相关度: {doc.get('rerank_score', 0):.3f})" if 'rerank_score' in doc else ""
-            results.append(f"[文档{i}] 来源: {source}{rerank_info}\n内容: {doc['content']}")
+            # 在来源信息中嵌入 kb_name，用于后续解析
+            results.append(f"[文档{i}] 来源: {source}|{kb_name}{rerank_info}\n内容: {doc['content']}")
 
         return "\n\n---\n\n".join(results)
 

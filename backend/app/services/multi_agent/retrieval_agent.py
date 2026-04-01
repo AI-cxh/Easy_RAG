@@ -152,12 +152,32 @@ class RetrievalAgent(BaseAgent):
                                 "kb_ids": tool_args.get("kb_ids", []),
                                 "result": tool_result
                             })
-                            # 解析来源
-                            pattern = r'\[文档\d+\] 来源: ([^\n(]+)'
-                            for source in re.findall(pattern, tool_result):
+                            # 解析来源 - 新格式包含 kb_name 和内容
+                            # 格式: [文档1] 来源: xxx|kb_name (相关度: 0.xxx)\n内容: xxx
+                            doc_pattern = r'\[文档\d+\] 来源: ([^|\n]+)\|([^(\n]+)(?:\s*\(相关度:\s*([\d.]+)\))?\n内容: (.*?)(?=\n\n---|\Z)'
+                            for source, kb_name, rerank_score, content in re.findall(doc_pattern, tool_result, re.DOTALL):
                                 source = source.strip()
-                                if source and source not in sources:
-                                    sources.append(source)
+                                kb_name = kb_name.strip()
+                                content = content.strip()
+                                if source:
+                                    sources.append({
+                                        "doc_name": source,
+                                        "kb_name": kb_name,
+                                        "content": content,
+                                        "rerank_score": float(rerank_score) if rerank_score else None
+                                    })
+                            # 兼容旧格式
+                            if not sources:
+                                pattern_old = r'\[文档\d+\] 来源: ([^\n(]+)'
+                                for source in re.findall(pattern_old, tool_result):
+                                    source = source.strip()
+                                    if source:
+                                        sources.append({
+                                            "doc_name": source,
+                                            "kb_name": source.split('[')[0] if '[' in source else source,
+                                            "content": "",
+                                            "rerank_score": None
+                                        })
 
                         elif tool_name == "web_search":
                             intermediate_steps.append({
@@ -291,11 +311,28 @@ class RetrievalAgent(BaseAgent):
                                 "kb_ids": tool_args.get("kb_ids", []),
                                 "result": tool_result
                             })
-                            pattern = r'\[文档\d+\] 来源: ([^\n(]+)'
-                            for source in re.findall(pattern, tool_result):
+                            # 解析来源 - 新格式包含 kb_name
+                            pattern_new = r'\[文档\d+\] 来源: ([^|\n]+)\|([^(\n]+)(?:\s*\(相关度:\s*([\d.]+)\))?'
+                            for source, kb_name, rerank_score in re.findall(pattern_new, tool_result):
                                 source = source.strip()
-                                if source and source not in sources:
-                                    sources.append(source)
+                                kb_name = kb_name.strip()
+                                if source:
+                                    sources.append({
+                                        "source": source,
+                                        "kb_name": kb_name,
+                                        "rerank_score": float(rerank_score) if rerank_score else None
+                                    })
+                            # 兼容旧格式
+                            if not sources:
+                                pattern_old = r'\[文档\d+\] 来源: ([^\n(]+)'
+                                for source in re.findall(pattern_old, tool_result):
+                                    source = source.strip()
+                                    if source:
+                                        sources.append({
+                                            "source": source,
+                                            "kb_name": source.split('[')[0] if '[' in source else source,
+                                            "rerank_score": None
+                                        })
 
                         elif tool_name == "web_search":
                             intermediate_steps.append({
