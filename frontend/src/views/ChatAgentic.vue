@@ -209,7 +209,24 @@
                   <!-- 知识库来源信息 -->
                   <div v-if="msg.sources?.length" class="message-sources">
                     <span class="sources-label">参考来源:</span>
-                    <span v-for="(source, i) in msg.sources" :key="i" class="source-tag">{{ source }}</span>
+                    <span
+                      v-for="(source, i) in msg.sources"
+                      :key="i"
+                      class="source-tag clickable"
+                      @click="openSourceDrawer(msg.source_details || [])"
+                      title="点击查看详情"
+                    >{{ source }}</span>
+                  </div>
+                  <!-- 知识库来源详情（新版） -->
+                  <div v-else-if="msg.source_details?.length" class="message-sources">
+                    <span class="sources-label">参考来源:</span>
+                    <span
+                      v-for="(kbName, i) in getUniqueKbNames(msg.source_details)"
+                      :key="i"
+                      class="source-tag clickable"
+                      @click="openSourceDrawer(msg.source_details)"
+                      title="点击查看详情"
+                    >{{ kbName }}</span>
                   </div>
                   <!-- 联网搜索来源 -->
                   <div v-if="msg.search_results?.length" class="message-sources web-sources">
@@ -267,26 +284,39 @@
               @input="autoResize"
               ref="inputRef"
             ></textarea>
-            <button
-              v-if="isSending"
-              class="stop-btn"
-              @click="stopGeneration"
-              title="停止生成"
-            >
-              <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path d="M6 6h12v12H6z"/>
-              </svg>
-            </button>
-            <button
-              v-else
-              class="send-btn"
-              :disabled="!inputMessage.trim()"
-              @click="handleSend"
-            >
-              <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-              </svg>
-            </button>
+            <div class="input-toolbar">
+              <div class="toolbar-left">
+                <!-- 文件上传 -->
+                <FileUploader
+                  ref="fileUploaderRef"
+                  :session-id="currentSessionId"
+                  @uploaded="handleFileUploaded"
+                  @error="handleUploadError"
+                />
+              </div>
+              <div class="toolbar-right">
+                <button
+                  v-if="isSending"
+                  class="stop-btn"
+                  @click="stopGeneration"
+                  title="停止生成"
+                >
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M6 6h12v12H6z"/>
+                  </svg>
+                </button>
+                <button
+                  v-else
+                  class="send-btn"
+                  :disabled="!inputMessage.trim()"
+                  @click="handleSend"
+                >
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -350,6 +380,13 @@
         </div>
       </div>
     </Teleport>
+
+    <!-- 来源详情边栏 -->
+    <SourceDrawer
+      :visible="showSourceDrawer"
+      :sources="currentSourceDetails"
+      @close="showSourceDrawer = false"
+    />
   </div>
 </template>
 
@@ -366,6 +403,8 @@ import katex from 'katex'
 import AppNavRail from '../components/AppNavRail.vue'
 import AgentThinking from '../components/AgentThinking.vue'
 import ToolsPanel from '../components/ToolsPanel.vue'
+import SourceDrawer from '../components/SourceDrawer.vue'
+import FileUploader from '../components/FileUploader.vue'
 import 'highlight.js/styles/github-dark.css'
 import 'katex/dist/katex.min.css'
 
@@ -420,10 +459,19 @@ const handleRename = () => {
 }
 
 // 类型定义
+interface SourceDetail {
+  kb_name: string
+  doc_name: string
+  content: string
+  rerank_score?: number
+  distance?: number
+}
+
 interface Message {
   role: 'user' | 'assistant'
   content: string
   sources?: string[]
+  source_details?: SourceDetail[]
   search_results?: Array<{ title: string; url: string; snippet?: string }>
   thinkingSteps?: ThinkingStep[]
 }
@@ -444,6 +492,40 @@ const copySuccess = ref(false)
 const editingIndex = ref<number>()
 const editingContent = ref('')
 const editInputRef = ref<HTMLTextAreaElement>()
+
+// 来源详情边栏
+const showSourceDrawer = ref(false)
+const currentSourceDetails = ref<SourceDetail[]>([])
+
+// 文件上传相关
+const fileUploaderRef = ref<InstanceType<typeof FileUploader>>()
+const temporaryKbId = ref<number>()
+
+// 打开来源详情边栏
+const openSourceDrawer = (sourceDetails: SourceDetail[]) => {
+  currentSourceDetails.value = sourceDetails
+  showSourceDrawer.value = true
+}
+
+// 获取去重后的知识库名称列表
+const getUniqueKbNames = (sourceDetails: SourceDetail[]): string[] => {
+  if (!sourceDetails || sourceDetails.length === 0) return []
+  const kbNames = sourceDetails.map(s => s.kb_name).filter(Boolean)
+  return [...new Set(kbNames)]
+}
+
+// 处理文件上传成功
+const handleFileUploaded = (data: { sessionId: number; kbId: number; files: any[] }) => {
+  temporaryKbId.value = data.kbId
+  if (!currentSessionId.value) {
+    currentSessionId.value = data.sessionId
+  }
+}
+
+// 处理上传错误
+const handleUploadError = (message: string) => {
+  console.error('Upload error:', message)
+}
 
 // 配置 marked
 marked.setOptions({
@@ -516,7 +598,8 @@ const loadSession = async (sessionId: number) => {
     messages.value = (result.messages || []).map((msg: any) => ({
       ...msg,
       thinkingSteps: msg.thinking_steps || msg.thinkingSteps,
-      searchResults: msg.search_results || msg.searchResults
+      searchResults: msg.search_results || msg.searchResults,
+      source_details: msg.source_details || msg.sourceDetails
     }))
     hasUserInteracted.value = messages.value.length > 0
   } catch (error) {
@@ -562,6 +645,8 @@ const newChat = () => {
   messages.value = []
   hasUserInteracted.value = false
   sidebarOpen.value = false
+  temporaryKbId.value = undefined
+  fileUploaderRef.value?.clearFiles()
 }
 
 // 复制消息
@@ -679,6 +764,7 @@ const handleSend = async () => {
       {
         message,
         session_id: currentSessionId.value,
+        kb_ids: temporaryKbId.value ? [temporaryKbId.value] : [],
         show_thinking: true
       },
       (chunk) => {
@@ -730,6 +816,9 @@ const handleSend = async () => {
     }
     if (result.sources && result.sources.length > 0) {
       messages.value[assistantIndex].sources = result.sources
+    }
+    if (result.sourceDetails && result.sourceDetails.length > 0) {
+      messages.value[assistantIndex].source_details = result.sourceDetails
     }
 
     await loadSessions()
@@ -1225,12 +1314,33 @@ onMounted(() => {
 
 /* 输入框行内布局 */
 .input-box {
-  flex-direction: row;
-  align-items: flex-end;
-  gap: var(--space-2);
+  flex-direction: column;
+  align-items: stretch;
 }
 
 .input-box .textarea {
   padding-right: 0;
+}
+
+/* 输入工具栏 */
+.input-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+  gap: var(--space-2);
+}
+
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 </style>
