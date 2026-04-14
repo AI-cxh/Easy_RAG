@@ -51,7 +51,7 @@
                     {{ session.username }}
                   </span>
                 </div>
-                <span class="session-time">{{ formatTime(session.created_at) }}</span>
+                <span class="session-time">{{ formatTime(session.latest_user_message_at || session.created_at) }}</span>
               </div>
               <div class="session-actions" @click.stop>
                 <button class="btn-icon btn-icon-sm" @click="startRename(session)" title="重命名">
@@ -462,6 +462,7 @@ interface SourceDetail {
 }
 
 interface Message {
+  id?: number  // 数据库消息ID
   role: 'user' | 'assistant'
   content: string
   sources?: string[]
@@ -590,6 +591,17 @@ const loadSession = async (sessionId: number) => {
   }
 }
 
+const syncCurrentSession = async () => {
+  if (!currentSessionId.value) return
+  await loadSession(currentSessionId.value)
+}
+
+const ensureMessageId = async (index: number) => {
+  if (messages.value[index]?.id) return messages.value[index].id
+  await syncCurrentSession()
+  return messages.value[index]?.id
+}
+
 const handleDeleteSession = async (sessionId: number) => {
   // 找到会话名称
   const session = sessions.value.find(s => s.id === sessionId)
@@ -667,19 +679,165 @@ const cancelEdit = () => {
 const saveEdit = async (index: number) => {
   if (!editingContent.value.trim()) return
 
-  messages.value[index].content = editingContent.value.trim()
+  const newContent = editingContent.value.trim()
   cancelEdit()
 
-  // 删除该消息之后的所有消息
-  if (index < messages.value.length - 1) {
-    messages.value = messages.value.slice(0, index + 1)
+  if (!currentSessionId.value) return
+
+  const messageId = await ensureMessageId(index)
+  if (!messageId) {
+    console.error('Failed to locate persisted message for edit')
+    return
   }
 
-  // 重新发送消息
-  const userMessage = messages.value[index].content
-  messages.value = messages.value.slice(0, index)
-  inputMessage.value = userMessage
-  await handleSend()
+  try {
+    await chatAPI.updateMessage(messageId, newContent)
+    await chatAPI.deleteMessageAndAfter(messageId)
+  } catch (error) {
+    console.error('Failed to update message:', error)
+    await syncCurrentSession()
+    return
+  }
+
+  // 更新本地消息内容
+  messages.value[index].content = newContent
+
+  // 删除该消息之后的所有消息（保留编辑的用户消息）
+  messages.value = messages.value.slice(0, index + 1)
+
+  // 重新生成回复
+  await regenerateFromIndex(index)
+}
+
+// 从指定用户消息索引重新生成回复
+const regenerateFromIndex = async (userIndex: number) => {
+  if (isSending.value) return
+
+  const userMessage = messages.value[userIndex].content
+  isSending.value = true
+  abortController.value = new AbortController()
+  let assistantIndex = -1
+
+  try {
+    assistantIndex = messages.value.length
+    messages.value.push({
+      role: 'assistant',
+      content: '',
+      agentPlan: [],
+      agentLogs: [],
+      completedTasks: []
+    })
+    scrollToBottom()
+
+    const result = await multiAgentAPI.sendMessageStream(
+      {
+        message: userMessage,
+        session_id: currentSessionId.value,
+        kb_ids: [],
+        show_process: true,
+        skip_user_message: true  // 跳过保存用户消息
+      },
+      (chunk) => {
+        if (chunk.type === 'answer' && chunk.content) {
+          messages.value[assistantIndex].content += chunk.content
+          scrollToBottom()
+        } else if (chunk.type === 'planning') {
+          if (!messages.value[assistantIndex].agentLogs) {
+            messages.value[assistantIndex].agentLogs = []
+          }
+          messages.value[assistantIndex].agentLogs!.push({
+            type: 'thought',
+            content: chunk.content || ''
+          })
+          scrollToBottom()
+        } else if (chunk.type === 'plan') {
+          messages.value[assistantIndex].agentPlan = chunk.tasks || []
+          scrollToBottom()
+        } else if (chunk.type === 'task_start') {
+          messages.value[assistantIndex].currentTaskId = chunk.task_id
+          if (!messages.value[assistantIndex].completedTasks) {
+            messages.value[assistantIndex].completedTasks = []
+          }
+          if (!messages.value[assistantIndex].agentLogs) {
+            messages.value[assistantIndex].agentLogs = []
+          }
+          messages.value[assistantIndex].agentLogs!.push({
+            type: 'thought',
+            content: `开始执行: ${chunk.description || ''}`
+          })
+          scrollToBottom()
+        } else if (chunk.type === 'task_complete') {
+          if (!messages.value[assistantIndex].completedTasks) {
+            messages.value[assistantIndex].completedTasks = []
+          }
+          messages.value[assistantIndex].completedTasks!.push(chunk.task_id || '')
+          scrollToBottom()
+        } else if (chunk.type === 'thought') {
+          if (!messages.value[assistantIndex].agentLogs) {
+            messages.value[assistantIndex].agentLogs = []
+          }
+          messages.value[assistantIndex].agentLogs!.push({
+            type: 'thought',
+            content: chunk.content || ''
+          })
+          scrollToBottom()
+        } else if (chunk.type === 'tool_call') {
+          if (!messages.value[assistantIndex].agentLogs) {
+            messages.value[assistantIndex].agentLogs = []
+          }
+          messages.value[assistantIndex].agentLogs!.push({
+            type: 'tool_call',
+            content: chunk.content || '',
+            tool_name: chunk.tool_name
+          })
+          scrollToBottom()
+        } else if (chunk.type === 'tool_result') {
+          if (!messages.value[assistantIndex].agentLogs) {
+            messages.value[assistantIndex].agentLogs = []
+          }
+          messages.value[assistantIndex].agentLogs!.push({
+            type: 'tool_result',
+            content: chunk.content || '',
+            tool_name: chunk.tool_name
+          })
+          scrollToBottom()
+        } else if (chunk.type === 'error') {
+          console.error('Stream error:', chunk.content)
+          messages.value[assistantIndex].content = chunk.content || '抱歉，发生了错误，请稍后重试。'
+        }
+      },
+      abortController.value.signal
+    )
+
+    currentSessionId.value = result.sessionId
+    if (result.searchResults && result.searchResults.length > 0) {
+      messages.value[assistantIndex].search_results = result.searchResults
+    }
+    if (result.sources && result.sources.length > 0) {
+      messages.value[assistantIndex].sources = result.sources
+    }
+    if (result.sourceDetails && result.sourceDetails.length > 0) {
+      messages.value[assistantIndex].source_details = result.sourceDetails
+    }
+
+    await syncCurrentSession()
+    await loadSessions()
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      await syncCurrentSession()
+      await loadSessions()
+    } else {
+      console.error('Chat error:', error)
+      if (assistantIndex >= 0 && messages.value[assistantIndex]) {
+        messages.value[assistantIndex].content = '抱歉，发生了错误，请稍后重试。'
+      } else {
+        messages.value.push({ role: 'assistant', content: '抱歉，发生了错误，请稍后重试。' })
+      }
+    }
+  } finally {
+    isSending.value = false
+    abortController.value = null
+  }
 }
 
 // 重新生成回答
@@ -690,14 +848,27 @@ const regenerateResponse = async () => {
   const lastUserIndex = messages.value.map(m => m.role).lastIndexOf('user')
   if (lastUserIndex === -1) return
 
-  // 删除最后一条助手消息
-  messages.value.pop()
+  if (!currentSessionId.value) return
 
-  // 重新发送
-  const userMessage = messages.value[lastUserIndex].content
-  messages.value = messages.value.slice(0, lastUserIndex)
-  inputMessage.value = userMessage
-  await handleSend()
+  const messageId = await ensureMessageId(lastUserIndex)
+  if (!messageId) {
+    console.error('Failed to locate persisted message for regenerate')
+    return
+  }
+
+  try {
+    await chatAPI.deleteMessageAndAfter(messageId)
+  } catch (error) {
+    console.error('Failed to delete messages:', error)
+    await syncCurrentSession()
+    return
+  }
+
+  // 删除该用户消息之后的所有消息（包括助手回复）
+  messages.value = messages.value.slice(0, lastUserIndex + 1)
+
+  // 重新生成回复
+  await regenerateFromIndex(lastUserIndex)
 }
 
 // 滚动到底部
@@ -711,11 +882,7 @@ const scrollToBottom = () => {
 
 // 停止生成
 const stopGeneration = () => {
-  if (abortController.value) {
-    abortController.value.abort()
-    abortController.value = null
-  }
-  isSending.value = false
+  abortController.value?.abort()
 }
 
 // 发送消息
@@ -732,9 +899,10 @@ const handleSend = async () => {
 
   isSending.value = true
   abortController.value = new AbortController()
+  let assistantIndex = -1
 
   try {
-    const assistantIndex = messages.value.length
+    assistantIndex = messages.value.length
     messages.value.push({
       role: 'assistant',
       content: '',
@@ -834,14 +1002,19 @@ const handleSend = async () => {
       messages.value[assistantIndex].source_details = result.sourceDetails
     }
 
+    await syncCurrentSession()
     await loadSessions()
   } catch (error: any) {
     if (error.name === 'AbortError') {
-      // 用户主动取消，不显示错误
-      console.log('Request aborted by user')
+      await syncCurrentSession()
+      await loadSessions()
     } else {
       console.error('Chat error:', error)
-      messages.value.push({ role: 'assistant', content: '抱歉，发生了错误，请稍后重试。' })
+      if (assistantIndex >= 0 && messages.value[assistantIndex]) {
+        messages.value[assistantIndex].content = '抱歉，发生了错误，请稍后重试。'
+      } else {
+        messages.value.push({ role: 'assistant', content: '抱歉，发生了错误，请稍后重试。' })
+      }
     }
   } finally {
     isSending.value = false

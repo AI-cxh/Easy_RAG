@@ -94,6 +94,7 @@ class Chunk(Base):
 class ChatSession(Base):
     """聊天会话模型"""
     __tablename__ = "chat_sessions"
+    __table_args__ = {"sqlite_autoincrement": True}
 
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(255), nullable=False, default="新对话")
@@ -110,6 +111,7 @@ class ChatSession(Base):
 class ChatMessage(Base):
     """聊天消息模型"""
     __tablename__ = "chat_messages"
+    __table_args__ = {"sqlite_autoincrement": True}
 
     id = Column(Integer, primary_key=True, index=True)
     session_id = Column(Integer, ForeignKey("chat_sessions.id", ondelete="CASCADE"), nullable=False)
@@ -143,6 +145,7 @@ class AgentConfig(Base):
 class AgentExecution(Base):
     """Agent执行记录模型"""
     __tablename__ = "agent_executions"
+    __table_args__ = {"sqlite_autoincrement": True}
 
     id = Column(Integer, primary_key=True, index=True)
     session_id = Column(Integer, ForeignKey("chat_sessions.id", ondelete="CASCADE"), nullable=False)

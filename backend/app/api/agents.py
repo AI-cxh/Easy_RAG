@@ -2,6 +2,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from typing import List
+import asyncio
 import json
 
 from app.models.database import SessionLocal, get_db
@@ -271,12 +272,14 @@ async def multi_agent_chat(
         session = None
         if request.session_id:
             session = db.query(ChatSession).filter(ChatSession.id == request.session_id).first()
+            if not session:
+                yield f"data: {json.dumps({'type': 'error', 'content': '会话不存在'}, ensure_ascii=False)}\n\n"
+                return
             # 权限检查
-            if session and session.user_id and session.user_id != user.id and user.role != "admin":
+            if session.user_id and session.user_id != user.id and user.role != "admin":
                 yield f"data: {json.dumps({'type': 'error', 'content': '无权访问此会话'}, ensure_ascii=False)}\n\n"
                 return
-
-        if not session:
+        else:
             session = ChatSession(
                 title=request.message[:50] + "..." if len(request.message) > 50 else request.message,
                 session_type="multi_agent",
@@ -285,20 +288,33 @@ async def multi_agent_chat(
             db.add(session)
             db.commit()
             db.refresh(session)
+        session_id = session.id
 
-        # 保存用户消息
-        user_message = ChatMessage(
-            session_id=session.id,
-            role="user",
-            content=request.message
-        )
-        db.add(user_message)
-        db.commit()
+        # 保存用户消息（如果不需要跳过）
+        if not request.skip_user_message:
+            user_message = ChatMessage(
+                session_id=session_id,
+                role="user",
+                content=request.message
+            )
+            db.add(user_message)
+            db.commit()
+            db.refresh(user_message)
+        else:
+            user_message = db.query(ChatMessage).filter(
+                ChatMessage.session_id == session_id,
+                ChatMessage.role == "user"
+            ).order_by(ChatMessage.id.desc()).first()
+
+            if not user_message:
+                yield f"data: {json.dumps({'type': 'error', 'content': '缺少可重用的用户消息'}, ensure_ascii=False)}\n\n"
+                return
 
         # 获取聊天历史
         history_messages = db.query(ChatMessage).filter(
-            ChatMessage.session_id == session.id
-        ).order_by(ChatMessage.created_at).all()
+            ChatMessage.session_id == session_id,
+            ChatMessage.id < user_message.id
+        ).order_by(ChatMessage.id).all()
 
         chat_history = [
             {"role": msg.role, "content": msg.content}
@@ -326,6 +342,9 @@ async def multi_agent_chat(
                 temperature=config.temperature / 100.0 if config.temperature else 0.7
             )
             agent_registry.register(custom_agent)
+
+        # 流式请求生命周期较长，避免旧 ORM 实例在后续插入时与 SQLite 复用的主键冲突
+        db.expunge_all()
 
         # 初始化Agent - 在注册完成后创建
         orchestrator = OrchestratorAgent(agent_registry=agent_registry)
@@ -357,6 +376,8 @@ async def multi_agent_chat(
         agent_logs = []
         completed_tasks = []
         current_task_id = None
+
+        interrupted = False
 
         try:
             async for event in orchestrator.stream_execute(task, context):
@@ -429,7 +450,8 @@ async def multi_agent_chat(
                         "content": event.get("content", ""),
                         "tool_name": event.get("tool_name")
                     })
-
+        except asyncio.CancelledError:
+            interrupted = True
         except Exception as e:
             import traceback
             error_detail = f"{str(e)}\n{traceback.format_exc()}"
@@ -452,19 +474,23 @@ async def multi_agent_chat(
         if completed_tasks:
             extra_data["completed_tasks"] = completed_tasks
 
-        assistant_message = ChatMessage(
-            session_id=session.id,
-            role="assistant",
-            content=full_response,
-            extra_data=json.dumps(extra_data) if extra_data else None
-        )
-        db.add(assistant_message)
-        db.commit()
+        if full_response or extra_data:
+            assistant_message = ChatMessage(
+                session_id=session_id,
+                role="assistant",
+                content=full_response,
+                extra_data=json.dumps(extra_data) if extra_data else None
+            )
+            db.add(assistant_message)
+            db.commit()
+
+        if interrupted:
+            raise asyncio.CancelledError()
 
         # 发送完成事件
         done_event = json.dumps({
             "type": "done",
-            "session_id": session.id,
+            "session_id": session_id,
             "sources": all_sources if all_sources else None,
             "source_details": all_source_details if all_source_details else None,
             "search_results": all_search_results if all_search_results else None

@@ -3,9 +3,11 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, AsyncGenerator
+import asyncio
 import json
 import os
 import tiktoken
+from sqlalchemy import func
 
 from app.models.database import get_db
 from app.models.models import ChatSession, ChatMessage, User, KnowledgeBase, Document, Chunk
@@ -63,6 +65,38 @@ def parse_message_metadata(msg: ChatMessage) -> dict:
 router = APIRouter()
 
 
+def get_latest_user_message(db: Session, session_id: int) -> ChatMessage | None:
+    """获取会话中的最后一条用户消息。"""
+    return db.query(ChatMessage).filter(
+        ChatMessage.session_id == session_id,
+        ChatMessage.role == "user"
+    ).order_by(ChatMessage.id.desc()).first()
+
+
+def save_assistant_message(
+    db: Session,
+    session_id: int,
+    content: str,
+    extra_data: dict | None = None
+) -> None:
+    """保存助手消息；空内容不落库。"""
+    if not content and not extra_data:
+        return
+
+    try:
+        assistant_msg = ChatMessage(
+            session_id=session_id,
+            role="assistant",
+            content=content,
+            extra_data=json.dumps(extra_data, ensure_ascii=False) if extra_data else None
+        )
+        db.add(assistant_msg)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"Failed to save assistant message: {e}")
+
+
 async def stream_response(
     session_id: int,
     response_generator: AsyncGenerator[str, None],
@@ -73,6 +107,7 @@ async def stream_response(
 ) -> AsyncGenerator[str, None]:
     """流式发送响应"""
     full_response = ""
+    extra_data = {}
     try:
         async for chunk in response_generator:
             full_response += chunk
@@ -82,6 +117,18 @@ async def stream_response(
                 "content": chunk
             }
             yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+    except asyncio.CancelledError:
+        if sources:
+            extra_data["source_details"] = sources
+        if search_results:
+            extra_data["search_results"] = search_results
+        save_assistant_message(
+            db=db,
+            session_id=session_id,
+            content=full_response,
+            extra_data=extra_data or None
+        )
+        raise
     except Exception as e:
         # 发送错误信息
         error_data = {"type": "error", "message": str(e)}
@@ -89,25 +136,16 @@ async def stream_response(
         return
 
     # 保存完整的助手消息到数据库
-    try:
-        # 构建extra_data
-        extra_data = {}
-        if sources:
-            extra_data["source_details"] = sources  # 保存详细的来源信息
-        if search_results:
-            extra_data["search_results"] = search_results
-
-        assistant_msg = ChatMessage(
-            session_id=session_id,
-            role="assistant",
-            content=full_response,
-            extra_data=json.dumps(extra_data, ensure_ascii=False) if extra_data else None
-        )
-        db.add(assistant_msg)
-        db.commit()
-    except Exception as e:
-        db.rollback()
-        print(f"Failed to save assistant message: {e}")
+    if sources:
+        extra_data["source_details"] = sources  # 保存详细的来源信息
+    if search_results:
+        extra_data["search_results"] = search_results
+    save_assistant_message(
+        db=db,
+        session_id=session_id,
+        content=full_response,
+        extra_data=extra_data or None
+    )
 
     # 发送完成信号和元数据
     # 提取去重的知识库名称列表
@@ -159,18 +197,27 @@ async def chat(
             db.add(session)
             db.commit()
             db.refresh(session)
+        session_id = session.id
 
-        # 保存用户消息
-        user_msg = ChatMessage(session_id=session.id, role="user", content=request.message)
-        db.add(user_msg)
-        db.commit()
+        # 保存用户消息（如果不需要跳过）
+        if not request.skip_user_message:
+            user_msg = ChatMessage(session_id=session_id, role="user", content=request.message)
+            db.add(user_msg)
+            db.commit()
+        else:
+            # 跳过保存用户消息时，获取最新的用户消息作为参考
+            user_msg = get_latest_user_message(db, session_id)
 
         # 获取聊天历史
-        history = db.query(ChatMessage).filter(
-            ChatMessage.session_id == session.id,
-            ChatMessage.created_at < user_msg.created_at
-        ).order_by(ChatMessage.created_at).all()
+        if user_msg:
+            history = db.query(ChatMessage).filter(
+                ChatMessage.session_id == session_id,
+                ChatMessage.id < user_msg.id
+            ).order_by(ChatMessage.id).all()
+        else:
+            history = []
         chat_history = [{"role": msg.role, "content": msg.content} for msg in history]
+        db.expunge_all()
 
         # 从知识库检索上下文
         context = ""
@@ -212,7 +259,7 @@ async def chat(
         # 返回 SSE 响应
         return StreamingResponse(
             stream_response(
-                session_id=session.id,
+                session_id=session_id,
                 response_generator=response_stream,
                 sources=source_details if source_details else None,
                 search_results=search_results if request.use_web_search else None,
@@ -236,24 +283,40 @@ async def get_sessions(
     user: User = Depends(require_user)
 ):
     """获取所有聊天会话，可选按类型过滤"""
-    query = db.query(ChatSession)
+    latest_user_message_subquery = db.query(
+        ChatMessage.session_id.label("session_id"),
+        func.max(ChatMessage.created_at).label("latest_user_message_at")
+    ).filter(
+        ChatMessage.role == "user"
+    ).group_by(ChatMessage.session_id).subquery()
+
+    query = db.query(
+        ChatSession,
+        latest_user_message_subquery.c.latest_user_message_at
+    ).outerjoin(
+        latest_user_message_subquery,
+        ChatSession.id == latest_user_message_subquery.c.session_id
+    )
     if session_type:
         query = query.filter(ChatSession.session_type == session_type)
     # 非管理员只能看自己的会话
     if user.role != "admin":
         query = query.filter(ChatSession.user_id == user.id)
-    sessions = query.order_by(ChatSession.created_at.desc()).all()
+    sessions = query.order_by(
+        func.coalesce(latest_user_message_subquery.c.latest_user_message_at, ChatSession.created_at).desc()
+    ).all()
 
     # 构建响应，包含用户名
     session_list = []
-    for session in sessions:
+    for session, latest_user_message_at in sessions:
         session_dict = {
             "id": session.id,
             "title": session.title,
             "session_type": session.session_type,
             "user_id": session.user_id,
             "username": session.user.username if session.user else None,
-            "created_at": session.created_at
+            "created_at": session.created_at,
+            "latest_user_message_at": latest_user_message_at
         }
         session_list.append(ChatSessionResponse(**session_dict, messages=[]))
 
@@ -278,7 +341,7 @@ async def get_session(
     # 获取会话的消息
     messages = db.query(ChatMessage).filter(
         ChatMessage.session_id == session_id
-    ).order_by(ChatMessage.created_at).all()
+    ).order_by(ChatMessage.id).all()
 
     # 构建响应
     session_dict = {
@@ -328,6 +391,72 @@ async def delete_session(
     db.delete(session)
     db.commit()
     return {"message": "会话已删除"}
+
+
+@router.delete("/chat/messages/{message_id}")
+async def delete_message_and_after(
+    message_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user)
+):
+    """
+    删除指定消息之后的所有消息（不包括该消息本身）
+    用于编辑消息或重新生成回答时清理旧消息
+    """
+    # 查找消息
+    message = db.query(ChatMessage).filter(ChatMessage.id == message_id).first()
+    if not message:
+        raise HTTPException(status_code=404, detail="消息不存在")
+
+    # 获取会话并检查权限
+    session = db.query(ChatSession).filter(ChatSession.id == message.session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    if session.user_id and session.user_id != user.id and user.role != "admin":
+        raise HTTPException(status_code=403, detail="无权修改此会话")
+
+    # 删除该消息之后的所有消息
+    deleted_count = db.query(ChatMessage).filter(
+        ChatMessage.session_id == message.session_id,
+        ChatMessage.id > message.id
+    ).delete()
+    db.commit()
+
+    return {"message": "消息已删除", "deleted_count": deleted_count}
+
+
+@router.put("/chat/messages/{message_id}")
+async def update_message(
+    message_id: int,
+    data: dict,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user)
+):
+    """
+    更新消息内容
+    用于编辑用户消息
+    """
+    # 查找消息
+    message = db.query(ChatMessage).filter(ChatMessage.id == message_id).first()
+    if not message:
+        raise HTTPException(status_code=404, detail="消息不存在")
+
+    # 获取会话并检查权限
+    session = db.query(ChatSession).filter(ChatSession.id == message.session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    if session.user_id and session.user_id != user.id and user.role != "admin":
+        raise HTTPException(status_code=403, detail="无权修改此会话")
+
+    if message.role != "user":
+        raise HTTPException(status_code=400, detail="仅支持编辑用户消息")
+
+    # 更新消息内容
+    if "content" in data:
+        message.content = data["content"]
+        db.commit()
+
+    return {"message": "消息已更新"}
 
 
 @router.put("/chat/sessions/{session_id}")
@@ -397,15 +526,8 @@ async def stream_agent_response(
                 error_data = {"type": "error", "message": event.get("content", "未知错误")}
                 yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
                 return
-
-    except Exception as e:
-        error_data = {"type": "error", "message": str(e)}
-        yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
-        return
-
-    # 保存完整的助手消息到数据库
-    try:
-        # 构建extra_data，保存thinking_steps和搜索结果
+    except asyncio.CancelledError:
+        # 客户端中断时保存已生成的部分内容和过程数据
         extra_data = {}
         if thinking_steps:
             extra_data["thinking_steps"] = thinking_steps
@@ -415,18 +537,34 @@ async def stream_agent_response(
             extra_data["sources"] = sources
         if source_details:
             extra_data["source_details"] = source_details
-
-        assistant_msg = ChatMessage(
+        save_assistant_message(
+            db=db,
             session_id=session_id,
-            role="assistant",
             content=full_response,
-            extra_data=json.dumps(extra_data, ensure_ascii=False) if extra_data else None
+            extra_data=extra_data or None
         )
-        db.add(assistant_msg)
-        db.commit()
+        raise
     except Exception as e:
-        db.rollback()
-        print(f"Failed to save assistant message: {e}")
+        error_data = {"type": "error", "message": str(e)}
+        yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
+        return
+
+    # 保存完整的助手消息到数据库
+    extra_data = {}
+    if thinking_steps:
+        extra_data["thinking_steps"] = thinking_steps
+    if search_results:
+        extra_data["search_results"] = search_results
+    if sources:
+        extra_data["sources"] = sources
+    if source_details:
+        extra_data["source_details"] = source_details
+    save_assistant_message(
+        db=db,
+        session_id=session_id,
+        content=full_response,
+        extra_data=extra_data or None
+    )
 
     # 发送完成信号
     end_data = {
@@ -472,18 +610,27 @@ async def chat_with_agent(
             db.add(session)
             db.commit()
             db.refresh(session)
+        session_id = session.id
 
-        # 保存用户消息
-        user_msg = ChatMessage(session_id=session.id, role="user", content=request.message)
-        db.add(user_msg)
-        db.commit()
+        # 保存用户消息（如果不需要跳过）
+        if not request.skip_user_message:
+            user_msg = ChatMessage(session_id=session_id, role="user", content=request.message)
+            db.add(user_msg)
+            db.commit()
+        else:
+            # 跳过保存用户消息时，获取最新的用户消息作为参考
+            user_msg = get_latest_user_message(db, session_id)
 
         # 获取聊天历史
-        history = db.query(ChatMessage).filter(
-            ChatMessage.session_id == session.id,
-            ChatMessage.created_at < user_msg.created_at
-        ).order_by(ChatMessage.created_at).all()
+        if user_msg:
+            history = db.query(ChatMessage).filter(
+                ChatMessage.session_id == session_id,
+                ChatMessage.id < user_msg.id
+            ).order_by(ChatMessage.id).all()
+        else:
+            history = []
         chat_history = [{"role": msg.role, "content": msg.content} for msg in history]
+        db.expunge_all()
 
         # 执行Agent
         agent_generator = agent_service.run(
@@ -496,7 +643,7 @@ async def chat_with_agent(
         # 返回 SSE 响应
         return StreamingResponse(
             stream_agent_response(
-                session_id=session.id,
+                session_id=session_id,
                 agent_generator=agent_generator,
                 db=db
             ),

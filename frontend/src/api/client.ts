@@ -426,15 +426,18 @@ export const chatAPI = {
       kb_ids?: number[]
       use_web_search?: boolean
       session_type?: string
+      skip_user_message?: boolean
     },
-    onChunk: (message: StreamMessage) => void
+    onChunk: (message: StreamMessage) => void,
+    signal?: AbortSignal
   ): Promise<{ sessionId: number; sources?: string[]; sourceDetails?: SourceDetail[]; searchResults?: any[] }> => {
     const response = await authFetch(`${API_BASE_URL}/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(data)
+      body: JSON.stringify(data),
+      signal
     })
 
     if (!response.ok) {
@@ -537,6 +540,34 @@ export const chatAPI = {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({ title })
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  },
+
+  // 删除消息之后的所有消息（不包括该消息本身）
+  deleteMessageAndAfter: async (messageId: number) => {
+    const response = await authFetch(`${API_BASE_URL}/chat/messages/${messageId}`, {
+      method: 'DELETE'
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  },
+
+  // 更新消息内容
+  updateMessage: async (messageId: number, content: string) => {
+    const response = await authFetch(`${API_BASE_URL}/chat/messages/${messageId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ content })
     })
     if (!response.ok) {
       const error = await response.text()
@@ -678,6 +709,7 @@ export const agentAPI = {
       kb_ids?: number[]
       use_web_search?: boolean
       show_thinking?: boolean
+      skip_user_message?: boolean
     },
     onChunk: (message: AgentStreamMessage) => void,
     signal?: AbortSignal
@@ -913,6 +945,7 @@ export const multiAgentAPI = {
       kb_ids?: number[]
       use_web_search?: boolean
       show_process?: boolean
+      skip_user_message?: boolean
     },
     onChunk: (message: MultiAgentStreamMessage) => void,
     signal?: AbortSignal
@@ -1065,4 +1098,3 @@ export const multiAgentAPI = {
     return response.json()
   }
 }
-

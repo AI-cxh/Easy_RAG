@@ -629,6 +629,37 @@
   fill: currentColor;
 }
 
+.stop-btn {
+  width: clamp(32px, 5vw, 40px);
+  height: clamp(32px, 5vw, 40px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-danger);
+  border: none;
+  border-radius: var(--radius-lg);
+  color: white;
+  cursor: pointer;
+  transition: all var(--duration-normal) var(--ease-soft);
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.25);
+  flex-shrink: 0;
+}
+
+.stop-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 16px rgba(220, 38, 38, 0.35);
+}
+
+.stop-btn:active {
+  transform: scale(0.98);
+}
+
+.stop-btn svg {
+  width: clamp(14px, 2vw, 18px);
+  height: clamp(14px, 2vw, 18px);
+  fill: currentColor;
+}
+
 /* 移动端侧边栏遮罩 */
 .sidebar-overlay {
   display: none;

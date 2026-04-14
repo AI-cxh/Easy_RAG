@@ -275,8 +275,19 @@
               </div>
               <div class="toolbar-right">
                 <button
+                  v-if="isSending"
+                  class="stop-btn"
+                  @click="stopGeneration"
+                  title="停止生成"
+                >
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M6 6h12v12H6z"/>
+                  </svg>
+                </button>
+                <button
+                  v-else
                   class="send-btn"
-                  :disabled="!inputMessage.trim() || isSending"
+                  :disabled="!inputMessage.trim()"
                   @click="handleSend"
                 >
                   <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -337,6 +348,7 @@ interface SourceDetail {
 }
 
 interface Message {
+  id?: number  // 数据库消息ID
   role: 'user' | 'assistant'
   content: string
   sources?: string[]
@@ -353,6 +365,7 @@ const sidebarOpen = ref(false)
 const sidebarCollapsed = ref(false)
 const messagesRef = ref<HTMLElement>()
 const inputRef = ref<HTMLTextAreaElement>()
+const abortController = ref<AbortController | null>(null)
 
 const selectedKbIds = ref<number[]>([])
 const useWebSearch = ref(false)
@@ -469,6 +482,17 @@ const loadSession = async (sessionId: number) => {
   }
 }
 
+const syncCurrentSession = async () => {
+  if (!currentSessionId.value) return
+  await loadSession(currentSessionId.value)
+}
+
+const ensureMessageId = async (index: number) => {
+  if (messages.value[index]?.id) return messages.value[index].id
+  await syncCurrentSession()
+  return messages.value[index]?.id
+}
+
 const handleDeleteSession = async (sessionId: number) => {
   const success = await deleteSessionFromList(sessionId)
   if (success && currentSessionId.value === sessionId) {
@@ -538,19 +562,94 @@ const cancelEdit = () => {
 const saveEdit = async (index: number) => {
   if (!editingContent.value.trim()) return
 
-  messages.value[index].content = editingContent.value.trim()
+  const newContent = editingContent.value.trim()
   cancelEdit()
 
-  // 删除该消息之后的所有消息
-  if (index < messages.value.length - 1) {
-    messages.value = messages.value.slice(0, index + 1)
+  if (!currentSessionId.value) return
+
+  const messageId = await ensureMessageId(index)
+  if (!messageId) {
+    console.error('Failed to locate persisted message for edit')
+    return
   }
 
-  // 重新发送消息
-  const userMessage = messages.value[index].content
-  messages.value = messages.value.slice(0, index)
-  inputMessage.value = userMessage
-  await handleSend()
+  try {
+    await chatAPI.updateMessage(messageId, newContent)
+    await chatAPI.deleteMessageAndAfter(messageId)
+  } catch (error) {
+    console.error('Failed to update message:', error)
+    await syncCurrentSession()
+    return
+  }
+
+  // 更新本地消息内容
+  messages.value[index].content = newContent
+
+  // 删除该消息之后的所有消息（保留编辑的用户消息）
+  messages.value = messages.value.slice(0, index + 1)
+
+  // 重新生成回复
+  await regenerateFromIndex(index)
+}
+
+// 从指定用户消息索引重新生成回复
+const regenerateFromIndex = async (userIndex: number) => {
+  if (isSending.value) return
+
+  const userMessage = messages.value[userIndex].content
+  isSending.value = true
+  abortController.value = new AbortController()
+  let assistantIndex = -1
+
+  try {
+    assistantIndex = messages.value.length
+    messages.value.push({ role: 'assistant', content: '' })
+    scrollToBottom()
+
+    const result = await chatAPI.sendMessageStream(
+      {
+        message: userMessage,
+        session_id: currentSessionId.value,
+        kb_ids: selectedKbIds.value,
+        use_web_search: useWebSearch.value,
+        session_type: SESSION_TYPE,
+        skip_user_message: true  // 跳过保存用户消息
+      },
+      (chunk) => {
+        if (chunk.type === 'chunk' && chunk.content) {
+          messages.value[assistantIndex].content += chunk.content
+          scrollToBottom()
+        } else if (chunk.type === 'error') {
+          console.error('Stream error:', chunk.message)
+          messages.value[assistantIndex].content = '抱歉，发生了错误，请稍后重试。'
+        }
+      },
+      abortController.value.signal
+    )
+
+    currentSessionId.value = result.sessionId
+    messages.value[assistantIndex].sources = result.sources
+    messages.value[assistantIndex].source_details = result.sourceDetails
+    messages.value[assistantIndex].search_results = result.searchResults
+
+    await syncCurrentSession()
+    await loadSessions()
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      await syncCurrentSession()
+      await loadSessions()
+    } else {
+      console.error('Chat error:', error)
+      if (assistantIndex >= 0 && messages.value[assistantIndex]) {
+        messages.value[assistantIndex].content = '抱歉，发生了错误，请稍后重试。'
+      } else {
+        messages.value.push({ role: 'assistant', content: '抱歉，发生了错误，请稍后重试。' })
+      }
+    }
+  } finally {
+    isSending.value = false
+    abortController.value = null
+  }
 }
 
 // 重新生成回答
@@ -561,14 +660,27 @@ const regenerateResponse = async () => {
   const lastUserIndex = messages.value.map(m => m.role).lastIndexOf('user')
   if (lastUserIndex === -1) return
 
-  // 删除最后一条助手消息
-  messages.value.pop()
+  if (!currentSessionId.value) return
 
-  // 重新发送
-  const userMessage = messages.value[lastUserIndex].content
-  messages.value = messages.value.slice(0, lastUserIndex)
-  inputMessage.value = userMessage
-  await handleSend()
+  const messageId = await ensureMessageId(lastUserIndex)
+  if (!messageId) {
+    console.error('Failed to locate persisted message for regenerate')
+    return
+  }
+
+  try {
+    await chatAPI.deleteMessageAndAfter(messageId)
+  } catch (error) {
+    console.error('Failed to delete messages:', error)
+    await syncCurrentSession()
+    return
+  }
+
+  // 删除该用户消息之后的所有消息（包括助手回复）
+  messages.value = messages.value.slice(0, lastUserIndex + 1)
+
+  // 重新生成回复
+  await regenerateFromIndex(lastUserIndex)
 }
 
 // 滚动到底部
@@ -578,6 +690,10 @@ const scrollToBottom = () => {
       messagesRef.value.scrollTop = messagesRef.value.scrollHeight
     }
   })
+}
+
+const stopGeneration = () => {
+  abortController.value?.abort()
 }
 
 // 发送消息
@@ -593,9 +709,11 @@ const handleSend = async () => {
   scrollToBottom()
 
   isSending.value = true
+  abortController.value = new AbortController()
+  let assistantIndex = -1
 
   try {
-    const assistantIndex = messages.value.length
+    assistantIndex = messages.value.length
     messages.value.push({ role: 'assistant', content: '' })
     scrollToBottom()
 
@@ -615,7 +733,8 @@ const handleSend = async () => {
           console.error('Stream error:', chunk.message)
           messages.value[assistantIndex].content = '抱歉，发生了错误，请稍后重试。'
         }
-      }
+      },
+      abortController.value.signal
     )
 
     currentSessionId.value = result.sessionId
@@ -623,12 +742,23 @@ const handleSend = async () => {
     messages.value[assistantIndex].source_details = result.sourceDetails
     messages.value[assistantIndex].search_results = result.searchResults
 
+    await syncCurrentSession()
     await loadSessions()
-  } catch (error) {
-    console.error('Chat error:', error)
-    messages.value.push({ role: 'assistant', content: '抱歉，发生了错误，请稍后重试。' })
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      await syncCurrentSession()
+      await loadSessions()
+    } else {
+      console.error('Chat error:', error)
+      if (assistantIndex >= 0 && messages.value[assistantIndex]) {
+        messages.value[assistantIndex].content = '抱歉，发生了错误，请稍后重试。'
+      } else {
+        messages.value.push({ role: 'assistant', content: '抱歉，发生了错误，请稍后重试。' })
+      }
+    }
   } finally {
     isSending.value = false
+    abortController.value = null
   }
 }
 

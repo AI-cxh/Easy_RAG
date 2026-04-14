@@ -10,6 +10,7 @@ export interface ChatSession {
   user_id?: number
   username?: string
   created_at: string
+  latest_user_message_at?: string
 }
 
 // 全局会话状态

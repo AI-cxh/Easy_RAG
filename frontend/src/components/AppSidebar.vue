@@ -37,7 +37,7 @@
                 {{ session.username }}
               </span>
             </div>
-            <span class="session-time">{{ formatTime(session.created_at) }}</span>
+            <span class="session-time">{{ formatTime(session.latest_user_message_at || session.created_at) }}</span>
           </div>
           <div class="session-actions" @click.stop>
             <button class="btn-icon btn-icon-sm" @click="startRename(session)" title="重命名">

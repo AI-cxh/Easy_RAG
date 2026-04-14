@@ -226,6 +226,7 @@ class ChatRequest(BaseModel):
     kb_ids: List[int] = Field(default_factory=list, description="选择的KnowledgeBase ID列表")
     use_web_search: bool = False
     session_type: str = Field(default="rag", description="会话类型: rag, agentic, multi_agent")
+    skip_user_message: bool = Field(default=False, description="跳过保存用户消息（用于重新生成）")
 
 
 class ChatResponse(BaseModel):
@@ -263,6 +264,7 @@ class ChatSessionResponse(BaseModel):
     user_id: Optional[int] = None
     username: Optional[str] = None  # 用户名，用于管理员区分
     created_at: datetime
+    latest_user_message_at: Optional[datetime] = None
     messages: List[ChatMessageResponse] = []
 
     class Config:
@@ -293,6 +295,7 @@ class AgentChatRequest(BaseModel):
     kb_ids: Optional[List[int]] = Field(default=None, description="可选的知识库ID列表，Agent可自主选择")
     use_web_search: bool = True
     show_thinking: bool = True  # 是否展示思考过程
+    skip_user_message: bool = Field(default=False, description="跳过保存用户消息（用于重新生成）")
 
 
 class AgentStepResponse(BaseModel):
@@ -368,6 +371,7 @@ class MultiAgentChatRequest(BaseModel):
     kb_ids: Optional[List[int]] = Field(default=None, description="可选的知识库ID列表")
     use_web_search: bool = True
     show_process: bool = True  # 是否展示执行过程
+    skip_user_message: bool = Field(default=False, description="跳过保存用户消息（用于重新生成）")
 
 
 class AgentTaskEvent(BaseModel):
