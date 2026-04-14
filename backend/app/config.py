@@ -8,8 +8,8 @@ class Settings(BaseSettings):
     API_PORT: int = 8000
 
     # AI模型配置
-    OPENAI_API_KEY: str = "sk-3e63a0bd10724616af4b6cc7711283c2"
-    OPENAI_API_BASE: Optional[str] = "https://api.deepseek.com"
+    OPENAI_API_KEY: str = ""  # 必须通过环境变量或 .env 文件设置
+    OPENAI_API_BASE: Optional[str] = None
     # 支持 OPENAI_BASE_URL 作为 OPENAI_API_BASE 的别名
     OPENAI_BASE_URL: Optional[str] = None
     MODEL_NAME: str = "deepseek-chat"
@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     RERANK_API_BASE: Optional[str] = None
 
     # 网络搜索配置
-    SEARCH_API_KEY: Optional[str] = "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"
+    SEARCH_API_KEY: Optional[str] = None  # 必须通过环境变量或 .env 文件设置
 
     # 数据库配置
     DATABASE_URL: str = "sqlite:///./rag.db"
@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     AGENT_VERBOSE: bool = False     # 是否输出详细日志
 
     # JWT认证配置
-    JWT_SECRET_KEY: str = "your-secret-key-change-in-production"
+    JWT_SECRET_KEY: str = ""  # 生产环境必须设置强密钥
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24小时
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
