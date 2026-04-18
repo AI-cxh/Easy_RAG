@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from typing import List, AsyncGenerator
+from typing import List, AsyncGenerator, Optional
 import asyncio
 import json
 import os
@@ -13,13 +13,15 @@ from app.models.database import get_db
 from app.models.models import ChatSession, ChatMessage, User, KnowledgeBase, Document, Chunk
 from app.models.schemas import (
     ChatRequest, ChatResponse, ChatSessionResponse, ChatSessionListResponse,
-    SessionRenameRequest, AgentChatRequest, AgentStepResponse, ChatUploadResponse, DocumentResponse
+    SessionRenameRequest, AgentChatRequest, AgentStepResponse, ChatUploadResponse,
+    DocumentResponse, SessionMemoryResponse
 )
 from app.services.rag import rag_service
 from app.services.search import get_search_service
 from app.services.embedding import embedding_service
 from app.services.agent import agent_service
-from app.services.auth import get_current_user, require_user
+from app.services.memory import memory_service
+from app.services.auth import get_current_user, require_user, resolve_project_for_user
 from app.utils.file_parser import FileParser
 from app.config import settings
 
@@ -65,6 +67,13 @@ def parse_message_metadata(msg: ChatMessage) -> dict:
 router = APIRouter()
 
 
+def ensure_session_access(session: ChatSession, db: Session, user: User, minimum_role: str = "viewer") -> None:
+    """校验会话访问权限。"""
+    if session.project_id:
+        resolve_project_for_user(db, user, session.project_id, minimum_role)
+    elif session.user_id and session.user_id != user.id and user.role != "admin":
+        raise HTTPException(status_code=403, detail="无权访问此会话")
+
 def get_latest_user_message(db: Session, session_id: int) -> ChatMessage | None:
     """获取会话中的最后一条用户消息。"""
     return db.query(ChatMessage).filter(
@@ -95,6 +104,28 @@ def save_assistant_message(
     except Exception as e:
         db.rollback()
         print(f"Failed to save assistant message: {e}")
+
+
+def maybe_refresh_session_memory(db: Session, session_id: int, force: bool = False) -> None:
+    """在主流程之外尽力刷新会话摘要。"""
+    try:
+        messages = db.query(ChatMessage).filter(
+            ChatMessage.session_id == session_id
+        ).order_by(ChatMessage.id).all()
+        session_memory = memory_service.get_session_memory(db, session_id)
+        if force or memory_service.should_refresh_session_memory(session_memory, messages):
+            memory_service.refresh_session_memory(db, session_id, messages, force=force)
+    except Exception as exc:
+        db.rollback()
+        print(f"Failed to refresh session memory: {exc}")
+
+
+def get_session_memory_response(db: Session, session_id: int) -> Optional[SessionMemoryResponse]:
+    """获取会话摘要响应。"""
+    session_memory = memory_service.get_session_memory(db, session_id)
+    if not session_memory:
+        return None
+    return memory_service.to_response(session_memory)
 
 
 async def stream_response(
@@ -146,6 +177,7 @@ async def stream_response(
         content=full_response,
         extra_data=extra_data or None
     )
+    maybe_refresh_session_memory(db, session_id)
 
     # 发送完成信号和元数据
     # 提取去重的知识库名称列表
@@ -185,14 +217,14 @@ async def chat(
             session = db.query(ChatSession).filter(ChatSession.id == request.session_id).first()
             if not session:
                 raise HTTPException(status_code=404, detail="会话不存在")
-            # 权限检查
-            if session.user_id and session.user_id != user.id and user.role != "admin":
-                raise HTTPException(status_code=403, detail="无权访问此会话")
+            ensure_session_access(session, db, user, "viewer")
         else:
+            project = resolve_project_for_user(db, user, request.project_id, "viewer")
             session = ChatSession(
                 title=request.message[:30] + ("..." if len(request.message) > 30 else ""),
                 session_type=request.session_type,
-                user_id=user.id
+                user_id=user.id,
+                project_id=project.id
             )
             db.add(session)
             db.commit()
@@ -216,7 +248,12 @@ async def chat(
             ).order_by(ChatMessage.id).all()
         else:
             history = []
-        chat_history = [{"role": msg.role, "content": msg.content} for msg in history]
+        session_memory = memory_service.get_session_memory(db, session_id)
+        chat_history = memory_service.trim_chat_history(
+            [{"role": msg.role, "content": msg.content} for msg in history]
+        )
+        project_context = memory_service.build_project_memory_context(db, session.project_id)
+        session_context = memory_service.build_session_memory_context(session_memory)
         db.expunge_all()
 
         # 从知识库检索上下文
@@ -252,6 +289,8 @@ async def chat(
         response_stream = rag_service.stream_generate_response(
             query=request.message,
             context=context,
+            project_context=project_context,
+            session_context=session_context,
             search_results=search_results,
             chat_history=chat_history
         )
@@ -279,6 +318,7 @@ async def chat(
 @router.get("/chat/sessions", response_model=ChatSessionListResponse)
 async def get_sessions(
     session_type: str = None,
+    project_id: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(require_user)
 ):
@@ -299,6 +339,9 @@ async def get_sessions(
     )
     if session_type:
         query = query.filter(ChatSession.session_type == session_type)
+    if project_id is not None:
+        resolve_project_for_user(db, user, project_id, "viewer")
+        query = query.filter(ChatSession.project_id == project_id)
     # 非管理员只能看自己的会话
     if user.role != "admin":
         query = query.filter(ChatSession.user_id == user.id)
@@ -314,6 +357,7 @@ async def get_sessions(
             "title": session.title,
             "session_type": session.session_type,
             "user_id": session.user_id,
+            "project_id": session.project_id,
             "username": session.user.username if session.user else None,
             "created_at": session.created_at,
             "latest_user_message_at": latest_user_message_at
@@ -334,9 +378,7 @@ async def get_session(
     if not session:
         raise HTTPException(status_code=404, detail="会话不存在")
 
-    # 权限检查
-    if session.user_id and session.user_id != user.id and user.role != "admin":
-        raise HTTPException(status_code=403, detail="无权访问此会话")
+    ensure_session_access(session, db, user, "viewer")
 
     # 获取会话的消息
     messages = db.query(ChatMessage).filter(
@@ -347,6 +389,9 @@ async def get_session(
     session_dict = {
         "id": session.id,
         "title": session.title,
+        "session_type": session.session_type,
+        "user_id": session.user_id,
+        "project_id": session.project_id,
         "created_at": session.created_at,
         "messages": [
             {
@@ -363,6 +408,44 @@ async def get_session(
     return ChatSessionResponse(**session_dict)
 
 
+@router.get("/chat/sessions/{session_id}/memory", response_model=Optional[SessionMemoryResponse])
+async def get_session_memory(
+    session_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user)
+):
+    """获取会话摘要记忆。"""
+    session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="会话不存在")
+
+    ensure_session_access(session, db, user, "viewer")
+    return get_session_memory_response(db, session_id)
+
+
+@router.post("/chat/sessions/{session_id}/memory/refresh", response_model=Optional[SessionMemoryResponse])
+async def refresh_session_memory(
+    session_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user)
+):
+    """手动刷新会话摘要记忆。"""
+    session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="会话不存在")
+
+    ensure_session_access(session, db, user, "editor")
+
+    messages = db.query(ChatMessage).filter(
+        ChatMessage.session_id == session_id
+    ).order_by(ChatMessage.id).all()
+    if not messages:
+        return None
+
+    memory_service.refresh_session_memory(db, session_id, messages, force=True)
+    return get_session_memory_response(db, session_id)
+
+
 @router.delete("/chat/sessions/{session_id}")
 async def delete_session(
     session_id: int,
@@ -373,9 +456,7 @@ async def delete_session(
     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="会话不存在")
-    # 权限检查
-    if session.user_id and session.user_id != user.id and user.role != "admin":
-        raise HTTPException(status_code=403, detail="无权删除此会话")
+    ensure_session_access(session, db, user, "editor")
 
     # 查找并删除关联的临时知识库
     temp_kb = db.query(KnowledgeBase).filter(
@@ -412,8 +493,7 @@ async def delete_message_and_after(
     session = db.query(ChatSession).filter(ChatSession.id == message.session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="会话不存在")
-    if session.user_id and session.user_id != user.id and user.role != "admin":
-        raise HTTPException(status_code=403, detail="无权修改此会话")
+    ensure_session_access(session, db, user, "editor")
 
     # 删除该消息之后的所有消息
     deleted_count = db.query(ChatMessage).filter(
@@ -445,8 +525,7 @@ async def update_message(
     session = db.query(ChatSession).filter(ChatSession.id == message.session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="会话不存在")
-    if session.user_id and session.user_id != user.id and user.role != "admin":
-        raise HTTPException(status_code=403, detail="无权修改此会话")
+    ensure_session_access(session, db, user, "editor")
 
     if message.role != "user":
         raise HTTPException(status_code=400, detail="仅支持编辑用户消息")
@@ -470,9 +549,7 @@ async def rename_session(
     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="会话不存在")
-    # 权限检查
-    if session.user_id and session.user_id != user.id and user.role != "admin":
-        raise HTTPException(status_code=403, detail="无权修改此会话")
+    ensure_session_access(session, db, user, "editor")
     session.title = request.title
     db.commit()
     return {"message": "会话已重命名", "id": session_id, "title": request.title}
@@ -565,6 +642,7 @@ async def stream_agent_response(
         content=full_response,
         extra_data=extra_data or None
     )
+    maybe_refresh_session_memory(db, session_id)
 
     # 发送完成信号
     end_data = {
@@ -598,14 +676,14 @@ async def chat_with_agent(
             session = db.query(ChatSession).filter(ChatSession.id == request.session_id).first()
             if not session:
                 raise HTTPException(status_code=404, detail="会话不存在")
-            # 权限检查
-            if session.user_id and session.user_id != user.id and user.role != "admin":
-                raise HTTPException(status_code=403, detail="无权访问此会话")
+            ensure_session_access(session, db, user, "viewer")
         else:
+            project = resolve_project_for_user(db, user, request.project_id, "viewer")
             session = ChatSession(
                 title=request.message[:30] + ("..." if len(request.message) > 30 else ""),
                 session_type="agentic",
-                user_id=user.id
+                user_id=user.id,
+                project_id=project.id
             )
             db.add(session)
             db.commit()
@@ -629,7 +707,12 @@ async def chat_with_agent(
             ).order_by(ChatMessage.id).all()
         else:
             history = []
-        chat_history = [{"role": msg.role, "content": msg.content} for msg in history]
+        session_memory = memory_service.get_session_memory(db, session_id)
+        chat_history = memory_service.trim_chat_history(
+            [{"role": msg.role, "content": msg.content} for msg in history]
+        )
+        project_context = memory_service.build_project_memory_context(db, session.project_id)
+        session_context = memory_service.build_session_memory_context(session_memory)
         db.expunge_all()
 
         # 执行Agent
@@ -637,6 +720,8 @@ async def chat_with_agent(
             query=request.message,
             chat_history=chat_history,
             kb_ids=request.kb_ids,
+            project_context=project_context,
+            session_context=session_context,
             use_web_search=request.use_web_search
         )
 
@@ -661,6 +746,7 @@ async def chat_with_agent(
 async def upload_chat_files(
     files: List[UploadFile] = File(...),
     session_id: int = Form(None),
+    project_id: int = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_user)
 ):
@@ -678,14 +764,15 @@ async def upload_chat_files(
                 raise HTTPException(status_code=404, detail="会话不存在")
 
             # 权限检查
-            if session.user_id and session.user_id != user.id and user.role != "admin":
-                raise HTTPException(status_code=403, detail="无权访问此会话")
+            ensure_session_access(session, db, user, "editor")
         else:
+            project = resolve_project_for_user(db, user, project_id, "viewer")
             # 创建新会话
             session = ChatSession(
                 title="文件对话",
                 session_type="rag",
-                user_id=user.id
+                user_id=user.id,
+                project_id=project.id
             )
             db.add(session)
             db.commit()
@@ -716,6 +803,7 @@ async def upload_chat_files(
                 is_temporary=True,
                 session_id=session.id,
                 user_id=user.id,
+                project_id=session.project_id,
                 chunk_size=200,  # 限制分块大小以适应嵌入模型的512 token限制（中文约1.5-2 tokens/字）
                 chunk_overlap=30
             )
@@ -834,3 +922,5 @@ async def upload_chat_files(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"文件上传失败: {str(e)}")
+        if project_context:
+            context = f"{project_context}\n\n{context}" if context else project_context

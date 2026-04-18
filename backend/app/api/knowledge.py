@@ -11,7 +11,7 @@ from app.models.schemas import (
     DocumentListResponse
 )
 from app.services.embedding import embedding_service
-from app.services.auth import get_current_user, require_user
+from app.services.auth import get_current_user, require_user, resolve_project_for_user
 
 
 router = APIRouter()
@@ -19,6 +19,7 @@ router = APIRouter()
 
 @router.get("/knowledge/stats", response_model=KnowledgeBaseStatsResponse)
 async def get_knowledge_base_stats(
+    project_id: int | None = Query(None, description="项目ID"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
@@ -27,7 +28,11 @@ async def get_knowledge_base_stats(
 
     # 非管理员只能看自己的数据
     if user and user.role != "admin":
-        query = query.filter(KnowledgeBase.user_id == user.id)
+        if project_id is not None:
+            resolve_project_for_user(db, user, project_id, "viewer")
+            query = query.filter(KnowledgeBase.project_id == project_id)
+        else:
+            query = query.filter(KnowledgeBase.user_id == user.id)
     elif not user:
         # 未登录用户看不到任何数据
         return KnowledgeBaseStatsResponse(total_kbs=0, total_docs=0, kbs_with_docs=0)
@@ -56,6 +61,7 @@ async def get_knowledge_bases(
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(10, ge=1, le=100, description="每页数量"),
     search: str = Query("", description="搜索关键词"),
+    project_id: int | None = Query(None, description="项目ID"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
@@ -64,7 +70,11 @@ async def get_knowledge_bases(
 
     # 非管理员只能看自己的数据
     if user and user.role != "admin":
-        query = query.filter(KnowledgeBase.user_id == user.id)
+        if project_id is not None:
+            resolve_project_for_user(db, user, project_id, "viewer")
+            query = query.filter(KnowledgeBase.project_id == project_id)
+        else:
+            query = query.filter(KnowledgeBase.user_id == user.id)
     elif not user:
         # 未登录用户返回空列表
         return KnowledgeBaseListResponse(items=[], total=0, page=page, page_size=page_size)
@@ -87,6 +97,7 @@ async def get_knowledge_bases(
             "id": kb.id,
             "name": kb.name,
             "description": kb.description,
+            "project_id": kb.project_id,
             "chunk_size": kb.chunk_size,
             "chunk_overlap": kb.chunk_overlap,
             "embedding_model": kb.embedding_model or "text-embedding-ada-002",
@@ -114,9 +125,10 @@ async def create_knowledge_base(
 ):
     """创建新知识库"""
     # 检查名称是否已存在（用户范围内）
+    project = resolve_project_for_user(db, user, kb_data.project_id, "editor")
     query = db.query(KnowledgeBase).filter(KnowledgeBase.name == kb_data.name)
     if user.role != "admin":
-        query = query.filter(KnowledgeBase.user_id == user.id)
+        query = query.filter(KnowledgeBase.project_id == project.id)
     existing = query.first()
     if existing:
         raise HTTPException(status_code=400, detail="知识库名称已存在")
@@ -128,7 +140,8 @@ async def create_knowledge_base(
         chunk_overlap=kb_data.chunk_overlap or 200,
         embedding_model=kb_data.embedding_model or "text-embedding-ada-002",
         owner=kb_data.owner or "",
-        user_id=user.id
+        user_id=user.id,
+        project_id=project.id
     )
     db.add(knowledge_base)
     db.commit()
@@ -148,7 +161,9 @@ async def get_knowledge_base(
         raise HTTPException(status_code=404, detail="知识库不存在")
 
     # 权限检查
-    if user and user.role != "admin" and knowledge_base.user_id != user.id:
+    if user and knowledge_base.project_id:
+        resolve_project_for_user(db, user, knowledge_base.project_id, "viewer")
+    elif user and user.role != "admin" and knowledge_base.user_id != user.id:
         raise HTTPException(status_code=403, detail="无权访问此知识库")
 
     return knowledge_base
@@ -166,7 +181,9 @@ async def delete_knowledge_base(
         raise HTTPException(status_code=404, detail="知识库不存在")
 
     # 权限检查
-    if user.role != "admin" and knowledge_base.user_id != user.id:
+    if knowledge_base.project_id:
+        resolve_project_for_user(db, user, knowledge_base.project_id, "editor")
+    elif user.role != "admin" and knowledge_base.user_id != user.id:
         raise HTTPException(status_code=403, detail="无权删除此知识库")
 
     # 删除ChromaDB中的向量数据
@@ -191,7 +208,9 @@ async def update_knowledge_base(
         raise HTTPException(status_code=404, detail="知识库不存在")
 
     # 权限检查
-    if user.role != "admin" and knowledge_base.user_id != user.id:
+    if knowledge_base.project_id:
+        resolve_project_for_user(db, user, knowledge_base.project_id, "editor")
+    elif user.role != "admin" and knowledge_base.user_id != user.id:
         raise HTTPException(status_code=403, detail="无权修改此知识库")
 
     # 检查名称是否与其他知识库重复
@@ -200,7 +219,7 @@ async def update_knowledge_base(
         KnowledgeBase.id != kb_id
     )
     if user.role != "admin":
-        query = query.filter(KnowledgeBase.user_id == user.id)
+        query = query.filter(KnowledgeBase.project_id == knowledge_base.project_id)
     existing = query.first()
     if existing:
         raise HTTPException(status_code=400, detail="知识库名称已存在")
@@ -246,7 +265,9 @@ async def get_documents(
         raise HTTPException(status_code=404, detail="知识库不存在")
 
     # 权限检查
-    if user and user.role != "admin" and knowledge_base.user_id != user.id:
+    if user and knowledge_base.project_id:
+        resolve_project_for_user(db, user, knowledge_base.project_id, "viewer")
+    elif user and user.role != "admin" and knowledge_base.user_id != user.id:
         raise HTTPException(status_code=403, detail="无权访问此知识库")
 
     query = db.query(Document).filter(Document.kb_id == kb_id)

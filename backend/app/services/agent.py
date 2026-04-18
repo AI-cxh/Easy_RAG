@@ -165,6 +165,8 @@ MCP工具（可用）：
         query: str,
         chat_history: Optional[List[Dict]] = None,
         kb_ids: Optional[List[int]] = None,
+        project_context: Optional[str] = None,
+        session_context: Optional[str] = None,
         use_web_search: bool = True
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
@@ -185,6 +187,10 @@ MCP工具（可用）：
 
         # 构建消息列表
         messages = [SystemMessage(content=system_prompt)]
+        if project_context:
+            messages.append(SystemMessage(content=project_context))
+        if session_context:
+            messages.append(SystemMessage(content=session_context))
 
         # 添加知识库信息
         if kb_ids:
@@ -193,7 +199,7 @@ MCP工具（可用）：
 
         # 添加聊天历史
         if chat_history:
-            for msg in chat_history[-6:]:  # 只保留最近3轮对话
+            for msg in chat_history[-6:]:
                 if msg['role'] == 'user':
                     messages.append(HumanMessage(content=msg['content']))
                 elif msg['role'] == 'assistant':

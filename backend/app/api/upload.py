@@ -8,7 +8,7 @@ from app.models.models import KnowledgeBase, Document, Chunk, User
 from app.models.schemas import DocumentResponse, DocumentListResponse, DocumentUpdateRequest
 from app.utils.file_parser import FileParser
 from app.services.embedding import embedding_service
-from app.services.auth import get_current_user, require_user
+from app.services.auth import get_current_user, require_user, resolve_project_for_user
 from app.config import settings
 import tiktoken
 
@@ -42,7 +42,7 @@ def get_file_type(filename: str) -> str:
 
 def check_kb_permission(knowledge_base: KnowledgeBase, user: User) -> None:
     """检查知识库权限"""
-    if user.role != "admin" and knowledge_base.user_id != user.id:
+    if user.role != "admin" and knowledge_base.project_id is None and knowledge_base.user_id != user.id:
         raise HTTPException(status_code=403, detail="无权访问此知识库")
 
 
@@ -68,6 +68,8 @@ async def upload_file(
 
     # 权限检查
     check_kb_permission(knowledge_base, user)
+    if knowledge_base.project_id:
+        resolve_project_for_user(db, user, knowledge_base.project_id, "editor")
 
     # 检查文件格式
     if not FileParser.is_supported(file.filename):
@@ -179,6 +181,8 @@ async def delete_document(
     # 权限检查
     knowledge_base = db.query(KnowledgeBase).filter(KnowledgeBase.id == document.kb_id).first()
     check_kb_permission(knowledge_base, user)
+    if knowledge_base.project_id:
+        resolve_project_for_user(db, user, knowledge_base.project_id, "editor")
 
     try:
         # 删除文件
@@ -218,6 +222,8 @@ async def update_document(
     # 权限检查
     knowledge_base = db.query(KnowledgeBase).filter(KnowledgeBase.id == document.kb_id).first()
     check_kb_permission(knowledge_base, user)
+    if knowledge_base.project_id:
+        resolve_project_for_user(db, user, knowledge_base.project_id, "editor")
 
     if request.filename is not None:
         document.filename = request.filename

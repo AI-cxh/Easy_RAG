@@ -113,6 +113,10 @@ class OrchestratorAgent(BaseAgent):
         prompt = f"请分析以下用户问题，并制定执行计划：\n\n用户问题：{query}\n"
 
         if context:
+            if context.get("project_context"):
+                prompt += f"\n项目背景:\n{context['project_context']}\n"
+            if context.get("session_context"):
+                prompt += f"\n会话摘要:\n{context['session_context']}\n"
             if context.get("kb_ids"):
                 prompt += f"\n可用知识库ID: {context['kb_ids']}"
             if context.get("use_web_search"):
@@ -352,6 +356,8 @@ class OrchestratorAgent(BaseAgent):
         if results:
             prompt += "以下是各专业Agent的分析结果：\n\n"
             for task_id, result in results.items():
+                if not isinstance(result, dict):
+                    continue
                 # result 现在是字典
                 agent_name = result.get("agent_name", "unknown")
                 agent_type = result.get("agent_type", "unknown")

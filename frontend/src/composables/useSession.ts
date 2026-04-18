@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue'
 import { chatAPI } from '../api/client'
+import { useProject } from './useProject'
 
 export type SessionType = 'rag' | 'agentic' | 'multi_agent'
 
@@ -28,12 +29,13 @@ const loadingMap = ref<Record<SessionType, boolean>>({
 export function useSession(sessionType: SessionType) {
   const sessions = computed(() => sessionsMap.value[sessionType])
   const loading = computed(() => loadingMap.value[sessionType])
+  const { currentProjectId } = useProject()
 
   // 加载会话列表
   const loadSessions = async () => {
     loadingMap.value[sessionType] = true
     try {
-      const result = await chatAPI.getSessions(sessionType)
+      const result = await chatAPI.getSessions(sessionType, currentProjectId.value || undefined)
       sessionsMap.value[sessionType] = result.sessions || result || []
     } catch (error) {
       console.error('Failed to load sessions:', error)

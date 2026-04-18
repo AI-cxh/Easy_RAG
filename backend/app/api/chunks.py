@@ -9,7 +9,7 @@ from app.models.schemas import (
     ChunkResponse, ChunkListResponse, ChunkCreate, ChunkUpdate, ChunkBatchRequest
 )
 from app.services.embedding import embedding_service
-from app.services.auth import get_current_user, require_user
+from app.services.auth import get_current_user, require_user, resolve_project_for_user
 import tiktoken
 
 
@@ -27,7 +27,9 @@ def count_tokens(text: str) -> int:
 def check_doc_permission(document: Document, user: User, db: Session) -> KnowledgeBase:
     """检查文档权限，返回知识库"""
     knowledge_base = db.query(KnowledgeBase).filter(KnowledgeBase.id == document.kb_id).first()
-    if knowledge_base and user.role != "admin" and knowledge_base.user_id != user.id:
+    if knowledge_base and knowledge_base.project_id and user:
+        resolve_project_for_user(db, user, knowledge_base.project_id, "viewer")
+    elif knowledge_base and user.role != "admin" and knowledge_base.user_id != user.id:
         raise HTTPException(status_code=403, detail="无权访问此文档")
     return knowledge_base
 

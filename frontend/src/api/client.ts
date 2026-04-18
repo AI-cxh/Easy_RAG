@@ -32,8 +32,10 @@ async function authFetch(url: string, options: RequestInit = {}): Promise<Respon
 // 知识库API
 export const knowledgeAPI = {
   // 获取统计数据
-  getStats: async () => {
-    const response = await authFetch(`${API_BASE_URL}/knowledge/stats`)
+  getStats: async (projectId?: number) => {
+    const query = new URLSearchParams()
+    if (projectId) query.append('project_id', projectId.toString())
+    const response = await authFetch(`${API_BASE_URL}/knowledge/stats?${query}`)
     if (!response.ok) {
       const error = await response.text()
       throw new Error(error || '请求失败')
@@ -42,11 +44,12 @@ export const knowledgeAPI = {
   },
 
   // 获取知识库列表（分页）
-  getList: async (params: { page?: number; page_size?: number; search?: string } = {}) => {
+  getList: async (params: { page?: number; page_size?: number; search?: string; project_id?: number } = {}) => {
     const query = new URLSearchParams()
     if (params.page) query.append('page', params.page.toString())
     if (params.page_size) query.append('page_size', params.page_size.toString())
     if (params.search) query.append('search', params.search)
+    if (params.project_id) query.append('project_id', params.project_id.toString())
 
     const response = await authFetch(`${API_BASE_URL}/knowledge?${query}`)
     if (!response.ok) {
@@ -71,6 +74,7 @@ export const knowledgeAPI = {
   create: async (data: {
     name: string
     description?: string
+    project_id?: number
     chunk_size?: number
     chunk_overlap?: number
     embedding_model?: string
@@ -423,6 +427,7 @@ export const chatAPI = {
     data: {
       message: string
       session_id?: number
+      project_id?: number
       kb_ids?: number[]
       use_web_search?: boolean
       session_type?: string
@@ -498,10 +503,13 @@ export const chatAPI = {
   },
 
   // 获取所有会话
-  getSessions: async (sessionType?: string) => {
+  getSessions: async (sessionType?: string, projectId?: number) => {
     const url = sessionType
-      ? `${API_BASE_URL}/chat/sessions?session_type=${sessionType}`
-      : `${API_BASE_URL}/chat/sessions`
+      ? `${API_BASE_URL}/chat/sessions?${new URLSearchParams({
+          session_type: sessionType,
+          ...(projectId ? { project_id: projectId.toString() } : {})
+        })}`
+      : `${API_BASE_URL}/chat/sessions${projectId ? `?project_id=${projectId}` : ''}`
     const response = await authFetch(url)
     if (!response.ok) {
       const error = await response.text()
@@ -706,6 +714,7 @@ export const agentAPI = {
     data: {
       message: string
       session_id?: number
+      project_id?: number
       kb_ids?: number[]
       use_web_search?: boolean
       show_thinking?: boolean
@@ -942,6 +951,7 @@ export const multiAgentAPI = {
     data: {
       message: string
       session_id?: number
+      project_id?: number
       kb_ids?: number[]
       use_web_search?: boolean
       show_process?: boolean
@@ -1094,6 +1104,126 @@ export const multiAgentAPI = {
     if (!response.ok) {
       const error = await response.text()
       throw new Error(error || '删除Agent失败')
+    }
+    return response.json()
+  }
+}
+
+export interface Project {
+  id: number
+  name: string
+  description?: string
+  owner_id: number
+  visibility: string
+  role?: string
+  created_at: string
+  updated_at?: string
+}
+
+export interface ProjectMemory {
+  id: number
+  project_id: number
+  content: string
+  memory_type: string
+  enabled: boolean
+  pinned: boolean
+  created_by?: number
+  created_at: string
+}
+
+export const projectAPI = {
+  getList: async (): Promise<{ items: Project[]; total: number }> => {
+    const response = await authFetch(`${API_BASE_URL}/projects`)
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  },
+
+  create: async (data: { name: string; description?: string }): Promise<Project> => {
+    const response = await authFetch(`${API_BASE_URL}/projects`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '创建项目失败')
+    }
+    return response.json()
+  },
+
+  update: async (projectId: number, data: { name?: string; description?: string; visibility?: string }): Promise<Project> => {
+    const response = await authFetch(`${API_BASE_URL}/projects/${projectId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '更新项目失败')
+    }
+    return response.json()
+  },
+
+  delete: async (projectId: number) => {
+    const response = await authFetch(`${API_BASE_URL}/projects/${projectId}`, {
+      method: 'DELETE'
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '删除项目失败')
+    }
+    return response.json()
+  },
+
+  getMemories: async (projectId: number): Promise<ProjectMemory[]> => {
+    const response = await authFetch(`${API_BASE_URL}/projects/${projectId}/memories`)
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '请求失败')
+    }
+    return response.json()
+  },
+
+  createMemory: async (projectId: number, data: { content: string; memory_type?: string; pinned?: boolean }): Promise<ProjectMemory> => {
+    const response = await authFetch(`${API_BASE_URL}/projects/${projectId}/memories`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '创建项目记忆失败')
+    }
+    return response.json()
+  },
+
+  updateMemory: async (
+    projectId: number,
+    memoryId: number,
+    data: { content?: string; memory_type?: string; enabled?: boolean; pinned?: boolean }
+  ): Promise<ProjectMemory> => {
+    const response = await authFetch(`${API_BASE_URL}/projects/${projectId}/memories/${memoryId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '更新项目记忆失败')
+    }
+    return response.json()
+  },
+
+  deleteMemory: async (projectId: number, memoryId: number) => {
+    const response = await authFetch(`${API_BASE_URL}/projects/${projectId}/memories/${memoryId}`, {
+      method: 'DELETE'
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '删除项目记忆失败')
     }
     return response.json()
   }

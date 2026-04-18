@@ -98,7 +98,15 @@
             <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
           </svg>
         </button>
-        <h1 class="header-title">多Agent协同</h1>
+        <div class="header-main">
+          <div>
+            <h1 class="header-title">多Agent协同</h1>
+            <p class="header-project">当前项目：{{ currentProject?.name || '未选择项目' }}</p>
+          </div>
+          <button class="header-memory-btn" @click="openProjectMemoryDrawer">
+            查看项目记忆
+          </button>
+        </div>
       </header>
 
       <!-- 消息区域 -->
@@ -383,14 +391,23 @@
       :sources="currentSourceDetails"
       @close="showSourceDrawer = false"
     />
+    <ProjectMemoryDrawer
+      :visible="showProjectMemoryDrawer"
+      :project-id="currentProjectId"
+      :project-name="currentProject?.name"
+      :memories="projectMemories"
+      :loading="loadingProjectMemories"
+      @close="showProjectMemoryDrawer = false"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue'
-import { multiAgentAPI, chatAPI } from '../api/client'
+import { ref, onMounted, nextTick, watch } from 'vue'
+import { multiAgentAPI, chatAPI, projectAPI, type ProjectMemory } from '../api/client'
 import { useSession, type SessionType, type ChatSession } from '../composables/useSession'
 import { useAuth } from '../composables/useAuth'
+import { useProject } from '../composables/useProject'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
 import DOMPurify from 'dompurify'
@@ -399,6 +416,7 @@ import AppNavRail from '../components/AppNavRail.vue'
 import AgentFlow from '../components/AgentFlow.vue'
 import ToolsPanel from '../components/ToolsPanel.vue'
 import SourceDrawer from '../components/SourceDrawer.vue'
+import ProjectMemoryDrawer from '../components/ProjectMemoryDrawer.vue'
 import 'highlight.js/styles/github-dark.css'
 import 'katex/dist/katex.min.css'
 
@@ -406,6 +424,7 @@ import 'katex/dist/katex.min.css'
 const SESSION_TYPE: SessionType = 'multi_agent'
 const { sessions, loading: loadingSessions, loadSessions, deleteSession: deleteSessionFromList, renameSession: renameSessionInList } = useSession(SESSION_TYPE)
 const { isAdmin, user: currentUser } = useAuth()
+const { currentProjectId, currentProject, loadProjects } = useProject()
 
 // 重命名相关状态
 const editingSessionId = ref<number>()
@@ -494,11 +513,32 @@ const editInputRef = ref<HTMLTextAreaElement>()
 // 来源详情边栏
 const showSourceDrawer = ref(false)
 const currentSourceDetails = ref<SourceDetail[]>([])
+const showProjectMemoryDrawer = ref(false)
+const loadingProjectMemories = ref(false)
+const projectMemories = ref<ProjectMemory[]>([])
 
 // 打开来源详情边栏
 const openSourceDrawer = (sourceDetails: SourceDetail[]) => {
   currentSourceDetails.value = sourceDetails
   showSourceDrawer.value = true
+}
+
+const openProjectMemoryDrawer = async () => {
+  showProjectMemoryDrawer.value = true
+  if (!currentProjectId.value) {
+    projectMemories.value = []
+    return
+  }
+
+  loadingProjectMemories.value = true
+  try {
+    projectMemories.value = await projectAPI.getMemories(currentProjectId.value)
+  } catch (error) {
+    console.error('Failed to load project memories:', error)
+    projectMemories.value = []
+  } finally {
+    loadingProjectMemories.value = false
+  }
 }
 
 // 获取去重后的知识库名称列表
@@ -733,6 +773,7 @@ const regenerateFromIndex = async (userIndex: number) => {
       {
         message: userMessage,
         session_id: currentSessionId.value,
+        project_id: currentProjectId.value || undefined,
         kb_ids: [],
         show_process: true,
         skip_user_message: true  // 跳过保存用户消息
@@ -916,6 +957,7 @@ const handleSend = async () => {
       {
         message,
         session_id: currentSessionId.value,
+        project_id: currentProjectId.value || undefined,
         kb_ids: [],
         show_process: true
       },
@@ -1024,12 +1066,65 @@ const handleSend = async () => {
 
 // 初始化
 onMounted(() => {
+  loadProjects()
+  loadSessions()
+})
+
+watch(currentProjectId, () => {
+  currentSessionId.value = undefined
+  messages.value = []
+  hasUserInteracted.value = false
+  showProjectMemoryDrawer.value = false
+  projectMemories.value = []
   loadSessions()
 })
 </script>
 
 <style scoped>
 @import '../assets/chat.css';
+
+.header-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.header-project {
+  margin: 4px 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.header-memory-btn {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: all var(--duration-fast);
+  white-space: nowrap;
+}
+
+.header-memory-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+@media (max-width: 768px) {
+  .header-main {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .header-memory-btn {
+    width: 100%;
+  }
+}
 
 /* 侧边栏样式 */
 .sidebar-wrapper {

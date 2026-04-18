@@ -58,6 +58,8 @@ class RAGService:
         self,
         query: str,
         context: str,
+        project_context: Optional[str] = None,
+        session_context: Optional[str] = None,
         search_results: Optional[List[Dict]] = None,
         chat_history: Optional[List[Dict]] = None
     ) -> str:
@@ -95,10 +97,14 @@ class RAGService:
             context=context if context else "无上下文信息",
             search_results=self._format_search_results(search_results) if search_results else "无搜索结果"
         ))]
+        if project_context:
+            messages.append(SystemMessage(content=project_context))
+        if session_context:
+            messages.append(SystemMessage(content=session_context))
 
         # 添加聊天历史
         if chat_history:
-            for msg in chat_history[-6:]:  # 只保留最近3轮对话
+            for msg in chat_history[-6:]:
                 if msg['role'] == 'user':
                     messages.append(HumanMessage(content=msg['content']))
                 elif msg['role'] == 'assistant':
@@ -126,6 +132,8 @@ class RAGService:
         self,
         query: str,
         context: str,
+        project_context: Optional[str] = None,
+        session_context: Optional[str] = None,
         search_results: Optional[List[Dict]] = None,
         chat_history: Optional[List[Dict]] = None
     ) -> AsyncGenerator[str, None]:
@@ -163,10 +171,14 @@ class RAGService:
             context=context if context else "无上下文信息",
             search_results=self._format_search_results(search_results) if search_results else "无搜索结果"
         ))]
+        if project_context:
+            messages.append(SystemMessage(content=project_context))
+        if session_context:
+            messages.append(SystemMessage(content=session_context))
 
         # 添加聊天历史
         if chat_history:
-            for msg in chat_history[-6:]:  # 只保留最近3轮对话
+            for msg in chat_history[-6:]:
                 if msg['role'] == 'user':
                     messages.append(HumanMessage(content=msg['content']))
                 elif msg['role'] == 'assistant':

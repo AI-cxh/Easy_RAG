@@ -86,10 +86,69 @@ class UserDetailResponse(UserResponse):
     stats: UserStatsResponse = UserStatsResponse()
 
 
+class ProjectCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255, description="项目名称")
+    description: Optional[str] = Field(None, description="项目描述")
+
+
+class ProjectUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=255, description="项目名称")
+    description: Optional[str] = Field(None, description="项目描述")
+    visibility: Optional[str] = Field(None, description="可见性: private/shared")
+
+
+class ProjectResponse(BaseModel):
+    id: int
+    name: str
+    description: Optional[str]
+    owner_id: int
+    visibility: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    role: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ProjectListResponse(BaseModel):
+    items: List[ProjectResponse]
+    total: int
+
+
+class ProjectMemoryCreate(BaseModel):
+    content: str = Field(..., min_length=1, description="记忆内容")
+    memory_type: str = Field(default="context", description="记忆类型: context/preference/instruction")
+    enabled: bool = Field(default=True, description="是否启用")
+    pinned: bool = Field(default=False, description="是否置顶")
+
+
+class ProjectMemoryUpdate(BaseModel):
+    content: Optional[str] = Field(None, min_length=1, description="记忆内容")
+    memory_type: Optional[str] = Field(None, description="记忆类型: context/preference/instruction")
+    enabled: Optional[bool] = Field(None, description="是否启用")
+    pinned: Optional[bool] = Field(None, description="是否置顶")
+
+
+class ProjectMemoryResponse(BaseModel):
+    id: int
+    project_id: int
+    content: str
+    memory_type: str
+    enabled: bool
+    pinned: bool
+    created_by: Optional[int] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 # KnowledgeBase Schemas
 class KnowledgeBaseCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255, description="知识库名称")
     description: Optional[str] = None
+    project_id: Optional[int] = Field(default=None, description="所属项目ID")
     chunk_size: Optional[int] = Field(default=1000, ge=100, le=10000, description="分块大小")
     chunk_overlap: Optional[int] = Field(default=200, ge=0, le=2000, description="分块重叠")
     embedding_model: Optional[str] = Field(default="text-embedding-ada-002", description="Embedding模型")
@@ -100,6 +159,7 @@ class KnowledgeBaseResponse(BaseModel):
     id: int
     name: str
     description: Optional[str]
+    project_id: Optional[int] = None
     chunk_size: int = 1000
     chunk_overlap: int = 200
     embedding_model: str = "text-embedding-ada-002"
@@ -117,6 +177,7 @@ class KnowledgeBaseListItem(BaseModel):
     id: int
     name: str
     description: Optional[str]
+    project_id: Optional[int] = None
     chunk_size: int = 1000
     chunk_overlap: int = 200
     embedding_model: str = "text-embedding-ada-002"
@@ -223,6 +284,7 @@ class ChunkBatchRequest(BaseModel):
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, description="用户消息")
     session_id: Optional[int] = None
+    project_id: Optional[int] = Field(default=None, description="所属项目ID")
     kb_ids: List[int] = Field(default_factory=list, description="选择的KnowledgeBase ID列表")
     use_web_search: bool = False
     session_type: str = Field(default="rag", description="会话类型: rag, agentic, multi_agent")
@@ -262,6 +324,7 @@ class ChatSessionResponse(BaseModel):
     title: str
     session_type: str = "rag"  # rag, agentic, multi_agent
     user_id: Optional[int] = None
+    project_id: Optional[int] = None
     username: Optional[str] = None  # 用户名，用于管理员区分
     created_at: datetime
     latest_user_message_at: Optional[datetime] = None
@@ -279,6 +342,23 @@ class SessionRenameRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=255, description="会话标题")
 
 
+class SessionMemoryResponse(BaseModel):
+    id: int
+    session_id: int
+    summary: str
+    user_goal: Optional[str] = None
+    constraints: List[str] = []
+    open_tasks: List[str] = []
+    key_facts: List[str] = []
+    source_message_count: int = 0
+    version: int = 1
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
 class KnowledgeBaseRenameRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255, description="知识库名称")
     description: Optional[str] = None
@@ -292,6 +372,7 @@ class KnowledgeBaseRenameRequest(BaseModel):
 class AgentChatRequest(BaseModel):
     message: str = Field(..., min_length=1, description="用户消息")
     session_id: Optional[int] = None
+    project_id: Optional[int] = Field(default=None, description="所属项目ID")
     kb_ids: Optional[List[int]] = Field(default=None, description="可选的知识库ID列表，Agent可自主选择")
     use_web_search: bool = True
     show_thinking: bool = True  # 是否展示思考过程
@@ -316,6 +397,7 @@ class AgentConfigCreate(BaseModel):
     description: Optional[str] = Field(None, description="Agent描述")
     system_prompt: Optional[str] = Field(None, description="系统提示词")
     tools: Optional[List[str]] = Field(default_factory=list, description="工具列表")
+    project_id: Optional[int] = Field(default=None, description="所属项目ID")
     model_name: Optional[str] = Field(None, description="模型名称")
     temperature: Optional[float] = Field(default=0.7, ge=0, le=2, description="温度参数")
 
@@ -325,6 +407,7 @@ class AgentConfigUpdate(BaseModel):
     description: Optional[str] = Field(None, description="Agent描述")
     system_prompt: Optional[str] = Field(None, description="系统提示词")
     tools: Optional[List[str]] = Field(None, description="工具列表")
+    project_id: Optional[int] = Field(None, description="所属项目ID")
     model_name: Optional[str] = Field(None, description="模型名称")
     temperature: Optional[float] = Field(None, ge=0, le=2, description="温度参数")
     is_active: Optional[bool] = Field(None, description="是否启用")
@@ -337,6 +420,7 @@ class AgentConfigResponse(BaseModel):
     description: Optional[str]
     system_prompt: Optional[str]
     tools: List[str] = []
+    project_id: Optional[int]
     model_name: Optional[str]
     temperature: float
     is_active: bool
@@ -368,6 +452,7 @@ class AgentExecutionResponse(BaseModel):
 class MultiAgentChatRequest(BaseModel):
     message: str = Field(..., min_length=1, description="用户消息")
     session_id: Optional[int] = None
+    project_id: Optional[int] = Field(default=None, description="所属项目ID")
     kb_ids: Optional[List[int]] = Field(default=None, description="可选的知识库ID列表")
     use_web_search: bool = True
     show_process: bool = True  # 是否展示执行过程

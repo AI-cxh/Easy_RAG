@@ -27,6 +27,12 @@ const router = createRouter({
       meta: { guest: true }
     },
     {
+      path: '/projects',
+      name: 'ProjectList',
+      component: () => import('../views/ProjectList.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/rag',
       name: 'RAG',
       component: () => import('../views/ChatRAG.vue'),

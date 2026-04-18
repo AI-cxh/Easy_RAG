@@ -32,7 +32,10 @@ def get_db():
 
 # Initialize database
 def init_db():
-    from app.models.models import KnowledgeBase, Document, ChatSession, ChatMessage, User
+    from app.models.models import (
+        KnowledgeBase, Document, ChatSession, ChatMessage, User,
+        Project, ProjectMember, ProjectMemory, AgentConfig, SessionMemory
+    )
     Base.metadata.create_all(bind=engine)
 
     if "sqlite" in settings.DATABASE_URL:
@@ -166,3 +169,113 @@ def init_db():
             if 'user_id' not in kb_columns:
                 conn.execute(text("ALTER TABLE knowledge_bases ADD COLUMN user_id INTEGER"))
                 conn.commit()
+
+            if 'project_id' not in kb_columns:
+                conn.execute(text("ALTER TABLE knowledge_bases ADD COLUMN project_id INTEGER"))
+                conn.commit()
+
+            result = conn.execute(text("PRAGMA table_info(chat_sessions)"))
+            session_columns = [row[1] for row in result.fetchall()]
+            if 'project_id' not in session_columns:
+                conn.execute(text("ALTER TABLE chat_sessions ADD COLUMN project_id INTEGER"))
+                conn.commit()
+
+            result = conn.execute(text("PRAGMA table_info(agent_configs)"))
+            agent_columns = [row[1] for row in result.fetchall()]
+            if result and 'project_id' not in agent_columns:
+                conn.execute(text("ALTER TABLE agent_configs ADD COLUMN project_id INTEGER"))
+                conn.commit()
+
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS projects (
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    name VARCHAR(255) NOT NULL,
+                    description TEXT,
+                    owner_id INTEGER NOT NULL,
+                    visibility VARCHAR(20) DEFAULT 'private',
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME,
+                    FOREIGN KEY(owner_id) REFERENCES users (id)
+                )
+            """))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_projects_id ON projects (id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_projects_owner_id ON projects (owner_id)"))
+
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS project_members (
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    role VARCHAR(20) DEFAULT 'viewer',
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(project_id) REFERENCES projects (id) ON DELETE CASCADE,
+                    FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE
+                )
+            """))
+            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_project_member ON project_members (project_id, user_id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_project_members_project_id ON project_members (project_id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_project_members_user_id ON project_members (user_id)"))
+
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS project_memories (
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER NOT NULL,
+                    content TEXT NOT NULL,
+                    memory_type VARCHAR(50) DEFAULT 'context',
+                    enabled BOOLEAN DEFAULT 1,
+                    pinned BOOLEAN DEFAULT 0,
+                    created_by INTEGER,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(project_id) REFERENCES projects (id) ON DELETE CASCADE,
+                    FOREIGN KEY(created_by) REFERENCES users (id)
+                )
+            """))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_project_memories_project_id ON project_memories (project_id)"))
+            conn.commit()
+
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS session_memories (
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    session_id INTEGER NOT NULL UNIQUE,
+                    summary TEXT NOT NULL DEFAULT '',
+                    user_goal TEXT,
+                    constraints TEXT,
+                    open_tasks TEXT,
+                    key_facts TEXT,
+                    source_message_count INTEGER DEFAULT 0,
+                    version INTEGER DEFAULT 1,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(session_id) REFERENCES chat_sessions (id) ON DELETE CASCADE
+                )
+            """))
+            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_session_memories_session_id ON session_memories (session_id)"))
+            conn.commit()
+
+            result = conn.execute(text("PRAGMA table_info(project_memories)"))
+            project_memory_columns = [row[1] for row in result.fetchall()]
+            if 'enabled' not in project_memory_columns:
+                conn.execute(text("ALTER TABLE project_memories ADD COLUMN enabled BOOLEAN DEFAULT 1"))
+                conn.commit()
+
+    from app.services.project import ensure_default_project
+
+    db = SessionLocal()
+    try:
+        users = db.query(User).all()
+        for user in users:
+            default_project = ensure_default_project(db, user)
+
+            db.query(KnowledgeBase).filter(
+                KnowledgeBase.user_id == user.id,
+                KnowledgeBase.project_id.is_(None)
+            ).update({"project_id": default_project.id}, synchronize_session=False)
+
+            db.query(ChatSession).filter(
+                ChatSession.user_id == user.id,
+                ChatSession.project_id.is_(None)
+            ).update({"project_id": default_project.id}, synchronize_session=False)
+
+        db.commit()
+    finally:
+        db.close()

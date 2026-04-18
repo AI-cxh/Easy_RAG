@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -22,6 +22,64 @@ class User(Base):
     # 关系
     knowledge_bases = relationship("KnowledgeBase", back_populates="user", foreign_keys="KnowledgeBase.user_id")
     chat_sessions = relationship("ChatSession", back_populates="user")
+    owned_projects = relationship("Project", back_populates="owner", foreign_keys="Project.owner_id")
+    project_memberships = relationship("ProjectMember", back_populates="user", cascade="all, delete-orphan")
+
+
+class Project(Base):
+    """项目模型"""
+    __tablename__ = "projects"
+    __table_args__ = {"sqlite_autoincrement": True}
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    visibility = Column(String(20), default="private")  # private/shared
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    owner = relationship("User", back_populates="owned_projects", foreign_keys=[owner_id])
+    members = relationship("ProjectMember", back_populates="project", cascade="all, delete-orphan")
+    memories = relationship("ProjectMemory", back_populates="project", cascade="all, delete-orphan")
+    knowledge_bases = relationship("KnowledgeBase", back_populates="project")
+    chat_sessions = relationship("ChatSession", back_populates="project")
+    agent_configs = relationship("AgentConfig", back_populates="project")
+
+
+class ProjectMember(Base):
+    """项目成员模型"""
+    __tablename__ = "project_members"
+    __table_args__ = (
+        UniqueConstraint("project_id", "user_id", name="uq_project_member"),
+        {"sqlite_autoincrement": True}
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    role = Column(String(20), default="viewer")  # owner/editor/viewer
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    project = relationship("Project", back_populates="members")
+    user = relationship("User", back_populates="project_memberships")
+
+
+class ProjectMemory(Base):
+    """项目记忆模型"""
+    __tablename__ = "project_memories"
+    __table_args__ = {"sqlite_autoincrement": True}
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    content = Column(Text, nullable=False)
+    memory_type = Column(String(50), default="context")  # context/preference/instruction
+    enabled = Column(Boolean, default=True)
+    pinned = Column(Boolean, default=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    project = relationship("Project", back_populates="memories")
 
 
 class KnowledgeBase(Base):
@@ -38,6 +96,7 @@ class KnowledgeBase(Base):
     embedding_model = Column(String(255), default="text-embedding-ada-002")
     owner = Column(String(100), default="")
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
     is_temporary = Column(Boolean, default=False)
     session_id = Column(Integer, ForeignKey("chat_sessions.id"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -46,6 +105,7 @@ class KnowledgeBase(Base):
     # 关系
     documents = relationship("Document", back_populates="knowledge_base", cascade="all, delete-orphan")
     user = relationship("User", back_populates="knowledge_bases", foreign_keys=[user_id])
+    project = relationship("Project", back_populates="knowledge_bases", foreign_keys=[project_id])
     session = relationship("ChatSession", back_populates="temporary_knowledge_base", foreign_keys=[session_id])
 
 
@@ -100,12 +160,15 @@ class ChatSession(Base):
     title = Column(String(255), nullable=False, default="新对话")
     session_type = Column(String(20), default="rag")  # rag, agentic, multi_agent
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # 关系
     messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
     user = relationship("User", back_populates="chat_sessions")
+    project = relationship("Project", back_populates="chat_sessions", foreign_keys=[project_id])
     temporary_knowledge_base = relationship("KnowledgeBase", back_populates="session", foreign_keys="KnowledgeBase.session_id")
+    memory = relationship("SessionMemory", back_populates="session", cascade="all, delete-orphan", uselist=False)
 
 
 class ChatMessage(Base):
@@ -125,6 +188,26 @@ class ChatMessage(Base):
     session = relationship("ChatSession", back_populates="messages")
 
 
+class SessionMemory(Base):
+    """会话摘要记忆模型"""
+    __tablename__ = "session_memories"
+    __table_args__ = {"sqlite_autoincrement": True}
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey("chat_sessions.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    summary = Column(Text, nullable=False, default="")
+    user_goal = Column(Text, nullable=True)
+    constraints = Column(Text, nullable=True)  # JSON string
+    open_tasks = Column(Text, nullable=True)  # JSON string
+    key_facts = Column(Text, nullable=True)  # JSON string
+    source_message_count = Column(Integer, default=0)
+    version = Column(Integer, default=1)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+
+    session = relationship("ChatSession", back_populates="memory")
+
+
 class AgentConfig(Base):
     """Agent配置模型"""
     __tablename__ = "agent_configs"
@@ -135,11 +218,14 @@ class AgentConfig(Base):
     description = Column(Text)
     system_prompt = Column(Text)
     tools = Column(Text)  # JSON格式的工具配置
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
     model_name = Column(String(255))
     temperature = Column(Integer, default=70)  # 存储为整数(0-100)，使用时除以100
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    project = relationship("Project", back_populates="agent_configs", foreign_keys=[project_id])
 
 
 class AgentExecution(Base):

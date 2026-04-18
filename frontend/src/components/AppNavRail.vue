@@ -1,5 +1,10 @@
 <template>
   <nav class="nav-rail">
+    <router-link to="/projects" class="nav-rail-btn" :class="{ active: isActive('/projects') }" :title="currentProject?.name || '项目工作区'">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+      </svg>
+    </router-link>
     <router-link to="/rag" class="nav-rail-btn" :class="{ active: isActive('/rag') }" title="普通RAG">
       <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
         <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/>
@@ -59,10 +64,12 @@
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
+import { useProject } from '../composables/useProject'
 
 const route = useRoute()
 const router = useRouter()
 const { user, isAdmin, logout } = useAuth()
+const { currentProject, loadProjects } = useProject()
 
 const showUserMenu = ref(false)
 
@@ -73,6 +80,8 @@ const isActive = (path: string) => {
 const userInitial = computed(() => {
   return user.value?.username?.charAt(0).toUpperCase() || '?'
 })
+
+loadProjects()
 
 function handleLogout() {
   showUserMenu.value = false

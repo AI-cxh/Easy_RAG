@@ -24,7 +24,8 @@ from app.services.multi_agent import (
     agent_registry,
     AgentType
 )
-from app.services.auth import get_current_user, require_user
+from app.services.memory import memory_service
+from app.services.auth import get_current_user, require_user, resolve_project_for_user
 
 router = APIRouter()
 
@@ -42,11 +43,16 @@ def get_db_local():
 
 @router.get("/agents", response_model=List[AgentConfigResponse])
 async def list_agents(
+    project_id: int | None = None,
     db: Session = Depends(get_db_local),
     user: User = Depends(get_current_user)
 ):
     """获取所有Agent配置"""
-    agents = db.query(AgentConfig).all()
+    query = db.query(AgentConfig)
+    if project_id is not None and user:
+        resolve_project_for_user(db, user, project_id, "viewer")
+        query = query.filter(AgentConfig.project_id == project_id)
+    agents = query.all()
     result = []
     for agent in agents:
         tools = json.loads(agent.tools) if agent.tools else []
@@ -57,6 +63,7 @@ async def list_agents(
             description=agent.description,
             system_prompt=agent.system_prompt,
             tools=tools,
+            project_id=agent.project_id,
             model_name=agent.model_name,
             temperature=agent.temperature / 100.0 if agent.temperature else 0.7,
             is_active=agent.is_active,
@@ -74,7 +81,11 @@ async def create_agent(
 ):
     """创建自定义Agent"""
     # 检查名称是否已存在
-    existing = db.query(AgentConfig).filter(AgentConfig.name == config.name).first()
+    project = resolve_project_for_user(db, user, config.project_id, "editor")
+    existing = db.query(AgentConfig).filter(
+        AgentConfig.name == config.name,
+        AgentConfig.project_id == project.id
+    ).first()
     if existing:
         raise HTTPException(status_code=400, detail="Agent名称已存在")
 
@@ -85,6 +96,7 @@ async def create_agent(
         description=config.description,
         system_prompt=config.system_prompt,
         tools=json.dumps(config.tools),
+        project_id=project.id,
         model_name=config.model_name,
         temperature=int(config.temperature * 100),
         is_active=True
@@ -101,6 +113,7 @@ async def create_agent(
         description=agent_config.description,
         system_prompt=agent_config.system_prompt,
         tools=config.tools,
+        project_id=agent_config.project_id,
         model_name=agent_config.model_name,
         temperature=config.temperature,
         is_active=agent_config.is_active,
@@ -128,6 +141,7 @@ async def get_agent(
         description=agent.description,
         system_prompt=agent.system_prompt,
         tools=tools,
+        project_id=agent.project_id,
         model_name=agent.model_name,
         temperature=agent.temperature / 100.0 if agent.temperature else 0.7,
         is_active=agent.is_active,
@@ -149,10 +163,13 @@ async def update_agent(
         raise HTTPException(status_code=404, detail="Agent不存在")
 
     # 更新字段
+    if agent.project_id:
+        resolve_project_for_user(db, user, agent.project_id, "editor")
     if config.name is not None:
         # 检查名称是否已被其他Agent使用
         existing = db.query(AgentConfig).filter(
             AgentConfig.name == config.name,
+            AgentConfig.project_id == agent.project_id,
             AgentConfig.id != agent_id
         ).first()
         if existing:
@@ -165,6 +182,9 @@ async def update_agent(
         agent.system_prompt = config.system_prompt
     if config.tools is not None:
         agent.tools = json.dumps(config.tools)
+    if config.project_id is not None:
+        project = resolve_project_for_user(db, user, config.project_id, "editor")
+        agent.project_id = project.id
     if config.model_name is not None:
         agent.model_name = config.model_name
     if config.temperature is not None:
@@ -183,6 +203,7 @@ async def update_agent(
         description=agent.description,
         system_prompt=agent.system_prompt,
         tools=tools,
+        project_id=agent.project_id,
         model_name=agent.model_name,
         temperature=agent.temperature / 100.0 if agent.temperature else 0.7,
         is_active=agent.is_active,
@@ -201,6 +222,8 @@ async def delete_agent(
     agent = db.query(AgentConfig).filter(AgentConfig.id == agent_id).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent不存在")
+    if agent.project_id:
+        resolve_project_for_user(db, user, agent.project_id, "editor")
 
     db.delete(agent)
     db.commit()
@@ -276,14 +299,19 @@ async def multi_agent_chat(
                 yield f"data: {json.dumps({'type': 'error', 'content': '会话不存在'}, ensure_ascii=False)}\n\n"
                 return
             # 权限检查
-            if session.user_id and session.user_id != user.id and user.role != "admin":
-                yield f"data: {json.dumps({'type': 'error', 'content': '无权访问此会话'}, ensure_ascii=False)}\n\n"
-                return
+            if session.project_id:
+                try:
+                    resolve_project_for_user(db, user, session.project_id, "viewer")
+                except HTTPException as exc:
+                    yield f"data: {json.dumps({'type': 'error', 'content': exc.detail}, ensure_ascii=False)}\n\n"
+                    return
         else:
+            project = resolve_project_for_user(db, user, request.project_id, "viewer")
             session = ChatSession(
                 title=request.message[:50] + "..." if len(request.message) > 50 else request.message,
                 session_type="multi_agent",
-                user_id=user.id
+                user_id=user.id,
+                project_id=project.id
             )
             db.add(session)
             db.commit()
@@ -316,10 +344,11 @@ async def multi_agent_chat(
             ChatMessage.id < user_message.id
         ).order_by(ChatMessage.id).all()
 
-        chat_history = [
+        session_memory = memory_service.get_session_memory(db, session_id)
+        chat_history = memory_service.trim_chat_history([
             {"role": msg.role, "content": msg.content}
-            for msg in history_messages[-6:]  # 最近3轮对话
-        ]
+            for msg in history_messages
+        ])
 
         # 注册专业Agent - 先清空再注册
         agent_registry.clear()
@@ -354,9 +383,13 @@ async def multi_agent_chat(
             "kb_ids": request.kb_ids or [],
             "use_web_search": request.use_web_search,
             "original_query": request.message,
+            "project_context": "",
+            "session_context": "",
             "sources": [],
             "search_results": []
         }
+        context["project_context"] = memory_service.build_project_memory_context(db, session.project_id)
+        context["session_context"] = memory_service.build_session_memory_context(session_memory)
 
         # 创建任务
         from app.services.multi_agent.base_agent import AgentTask
@@ -483,6 +516,14 @@ async def multi_agent_chat(
             )
             db.add(assistant_message)
             db.commit()
+            messages = db.query(ChatMessage).filter(
+                ChatMessage.session_id == session_id
+            ).order_by(ChatMessage.id).all()
+            if memory_service.should_refresh_session_memory(
+                memory_service.get_session_memory(db, session_id),
+                messages
+            ):
+                memory_service.refresh_session_memory(db, session_id, messages)
 
         if interrupted:
             raise asyncio.CancelledError()

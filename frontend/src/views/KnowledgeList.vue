@@ -4,7 +4,10 @@
 
     <div class="main-wrapper">
       <header class="page-header">
-        <h1 class="page-title">知识库管理</h1>
+        <div>
+          <h1 class="page-title">知识库管理</h1>
+          <p class="page-subtitle">当前项目：{{ currentProject?.name || '未选择项目' }}</p>
+        </div>
         <div class="header-actions">
           <button class="btn btn-primary" @click="showCreateDialog = true">
             <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -270,6 +273,7 @@ import AppNavRail from '../components/AppNavRail.vue'
 import Pagination from '../components/Pagination.vue'
 import { knowledgeAPI } from '../api/client'
 import { useAuth } from '../composables/useAuth'
+import { useProject } from '../composables/useProject'
 
 interface KnowledgeBase {
   id: number
@@ -323,10 +327,11 @@ const deleting = ref(false)
 // 获取当前用户
 const { user } = useAuth()
 const currentUser = computed(() => user.value?.username || '')
+const { currentProjectId, currentProject, loadProjects } = useProject()
 
 const loadStats = async () => {
   try {
-    stats.value = await knowledgeAPI.getStats()
+    stats.value = await knowledgeAPI.getStats(currentProjectId.value || undefined)
   } catch (error) {
     console.error('Failed to load stats:', error)
   }
@@ -338,7 +343,8 @@ const loadKnowledgeBases = async () => {
     const data = await knowledgeAPI.getList({
       page: currentPage.value,
       page_size: pageSize.value,
-      search: searchQuery.value
+      search: searchQuery.value,
+      project_id: currentProjectId.value || undefined
     })
     knowledgeBases.value = data.items
     total.value = data.total
@@ -369,11 +375,16 @@ const createKb = async () => {
     alert('请输入知识库名称')
     return
   }
+  if (!currentProjectId.value) {
+    alert('请先创建或选择项目')
+    return
+  }
 
   creating.value = true
   try {
     await knowledgeAPI.create({
       ...newKbForm.value,
+      project_id: currentProjectId.value,
       owner: currentUser.value
     })
     showCreateDialog.value = false
@@ -467,6 +478,7 @@ const formatDate = (dateStr: string) => {
 }
 
 onMounted(() => {
+  loadProjects()
   loadStats()
   loadKnowledgeBases()
 })
@@ -503,6 +515,12 @@ onMounted(() => {
   font-weight: var(--font-semibold);
   color: var(--text-primary);
   margin: 0;
+}
+
+.page-subtitle {
+  margin: var(--space-2) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
 }
 
 .header-actions .btn svg {

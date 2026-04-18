@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.database import get_db
-from app.models.models import User
+from app.models.models import User, Project
+from app.services.project import ensure_default_project, user_has_project_role
 
 # HTTP Bearer认证
 security = HTTPBearer(auto_error=False)
@@ -111,3 +112,29 @@ def require_admin(
             detail="需要管理员权限"
         )
     return user
+
+
+def resolve_project_for_user(
+    db: Session,
+    user: User,
+    project_id: Optional[int] = None,
+    minimum_role: str = "viewer"
+) -> Project:
+    """解析并校验用户可访问的项目；未传时回退到默认项目。"""
+    if project_id is None:
+        return ensure_default_project(db, user)
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="项目不存在"
+        )
+
+    if not user_has_project_role(db, project_id, user, minimum_role):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="无权访问此项目"
+        )
+
+    return project
