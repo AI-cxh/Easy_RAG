@@ -112,15 +112,15 @@ async def create_chunk(
     kb_id = document.kb_id
     knowledge_base = db.query(KnowledgeBase).filter(KnowledgeBase.id == kb_id).first()
     kb_name = knowledge_base.name if knowledge_base else "未知知识库"
-    metadatas = [{
+    metadata = {
         "source": f"{document.filename}[new]",
         "doc_id": doc_id,
         "kb_id": kb_id,
         "kb_name": kb_name,
         "chunk_index": chunk.sort_order,
         "enabled": True
-    }]
-    embedding_service.embed_and_store(kb_id, [chunk_data.content], metadatas)
+    }
+    embedding_service.upsert_chunk_vector(kb_id, doc_id, chunk.sort_order, chunk_data.content, metadata)
 
     return chunk
 
@@ -148,18 +148,21 @@ async def update_chunk(
 
         # 更新向量库中的内容
         kb_id = document.kb_id
-        metadatas = [{
+        knowledge_base = db.query(KnowledgeBase).filter(KnowledgeBase.id == kb_id).first()
+        metadata = {
             "source": f"{document.filename}[edit]",
             "doc_id": chunk.doc_id,
+            "kb_id": kb_id,
+            "kb_name": knowledge_base.name if knowledge_base else "未知知识库",
             "chunk_index": chunk.sort_order,
             "enabled": chunk.enabled
-        }]
-        embedding_service.rebuild_vectors(kb_id, chunk.doc_id, [chunk_data.content], metadatas)
+        }
+        embedding_service.upsert_chunk_vector(kb_id, chunk.doc_id, chunk.sort_order, chunk_data.content, metadata)
 
     if chunk_data.enabled is not None:
         chunk.enabled = chunk_data.enabled
         # 同步更新 ChromaDB 中的 enabled 状态
-        embedding_service.set_chunks_enabled_by_doc_id(document.kb_id, chunk.doc_id, chunk_data.enabled)
+        embedding_service.set_chunk_enabled_by_sort_order(document.kb_id, chunk.doc_id, chunk.sort_order, chunk_data.enabled)
 
     db.commit()
     db.refresh(chunk)
@@ -190,7 +193,7 @@ async def delete_chunk(
     db.commit()
 
     # 从向量库中删除
-    embedding_service.delete_chunks_by_doc_id(kb_id, chunk.doc_id)
+    embedding_service.delete_chunk_by_sort_order(kb_id, chunk.doc_id, chunk.sort_order)
 
     return {"message": "分块已删除"}
 
@@ -217,7 +220,7 @@ async def toggle_chunk(
 
     # 同步更新 ChromaDB
     if document:
-        embedding_service.set_chunks_enabled_by_doc_id(document.kb_id, chunk.doc_id, new_enabled)
+        embedding_service.set_chunk_enabled_by_sort_order(document.kb_id, chunk.doc_id, chunk.sort_order, new_enabled)
 
     return chunk
 
@@ -355,14 +358,19 @@ async def rebuild_vectors(
         return {"message": "没有启用的分块需要重建"}
 
     kb_id = document.kb_id
+    knowledge_base = db.query(KnowledgeBase).filter(KnowledgeBase.id == kb_id).first()
+    kb_name = knowledge_base.name if knowledge_base else "未知知识库"
 
     # 准备数据
     chunk_contents = [chunk.content for chunk in chunks]
     metadatas = [{
-        "source": f"{document.filename}[{i+1}]",
+        "source": f"{document.filename}[{chunk.sort_order + 1}]",
         "doc_id": doc_id,
-        "chunk_index": i
-    } for i in range(len(chunks))]
+        "kb_id": kb_id,
+        "kb_name": kb_name,
+        "chunk_index": chunk.sort_order,
+        "enabled": True
+    } for chunk in chunks]
 
     # 重建向量
     count = embedding_service.rebuild_vectors(kb_id, doc_id, chunk_contents, metadatas)

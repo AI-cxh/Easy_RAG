@@ -1,11 +1,12 @@
 """RAG核心服务：负责检索增强生成"""
 from typing import List, Optional, Dict, AsyncGenerator
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+from langchain_core.messages import SystemMessage, HumanMessage
 
 from app.config import settings
 from app.services.embedding import embedding_service
 from app.services.rerank import rerank_service
+from app.services.message_utils import build_history_message
 
 
 class RAGService:
@@ -105,10 +106,7 @@ class RAGService:
         # 添加聊天历史
         if chat_history:
             for msg in chat_history[-6:]:
-                if msg['role'] == 'user':
-                    messages.append(HumanMessage(content=msg['content']))
-                elif msg['role'] == 'assistant':
-                    messages.append(AIMessage(content=msg['content']))
+                messages.append(build_history_message(msg))
 
         # 添加当前查询
         messages.append(HumanMessage(content=query))
@@ -179,10 +177,7 @@ class RAGService:
         # 添加聊天历史
         if chat_history:
             for msg in chat_history[-6:]:
-                if msg['role'] == 'user':
-                    messages.append(HumanMessage(content=msg['content']))
-                elif msg['role'] == 'assistant':
-                    messages.append(AIMessage(content=msg['content']))
+                messages.append(build_history_message(msg))
 
         # 添加当前查询
         messages.append(HumanMessage(content=query))

@@ -2,9 +2,10 @@
 from typing import List, Dict, Optional, Any, AsyncGenerator
 import time
 import re
+import json
 import logging
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
+from langchain_core.messages import SystemMessage, HumanMessage, ToolMessage
 from langchain_core.tools import BaseTool
 
 from app.config import settings
@@ -13,6 +14,12 @@ from app.services.multi_agent.base_agent import (
 )
 from app.services.tools import knowledge_search, web_search, list_knowledge_bases, get_all_tools
 from app.services.mcp_client import mcp_client
+from app.services.multi_agent.deepseek_tool_loop import (
+    should_use_native_deepseek,
+    build_native_client,
+    tool_to_openai_schema,
+    build_native_messages,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +94,7 @@ class RetrievalAgent(BaseAgent):
             openai_api_key=settings.OPENAI_API_KEY,
             openai_api_base=settings.OPENAI_API_BASE
         )
+        self.native_client = build_native_client()
 
         logger.info(f"RetrievalAgent initialized with {len(builtin_tools)} built-in tools and {len(mcp_tools)} MCP tools")
 
@@ -117,6 +125,9 @@ class RetrievalAgent(BaseAgent):
             kb_ids = context.get("kb_ids", self.kb_ids)
             use_web_search = context.get("use_web_search", self.use_web_search)
             query = task.description
+
+            if should_use_native_deepseek(self.model_name):
+                return await self._native_execute(task, kb_ids, use_web_search, query, start_time)
 
             # 构建消息
             system_prompt = self._build_system_prompt_with_context(kb_ids, use_web_search)
@@ -263,6 +274,11 @@ class RetrievalAgent(BaseAgent):
                 "type": "thought",
                 "content": f"开始检索任务: {query}"
             }
+
+            if should_use_native_deepseek(self.model_name):
+                async for event in self._native_stream_execute(task, kb_ids, use_web_search, query, start_time):
+                    yield event
+                return
 
             # 构建消息
             system_prompt = self._build_system_prompt_with_context(kb_ids, use_web_search)
@@ -421,6 +437,257 @@ class RetrievalAgent(BaseAgent):
                 except Exception as e:
                     return f"工具执行出错: {str(e)}"
         return f"未找到工具: {tool_name}"
+
+    async def _native_execute(
+        self,
+        task: AgentTask,
+        kb_ids: List[int],
+        use_web_search: bool,
+        query: str,
+        start_time: float
+    ) -> AgentResult:
+        """DeepSeek 原生工具循环。"""
+        intermediate_steps = []
+        sources = []
+        search_results = []
+
+        system_prompt = self._build_system_prompt_with_context(kb_ids, use_web_search)
+        messages = build_native_messages(system_prompt, query)
+        tools = [tool_to_openai_schema(tool) for tool in self.tools]
+
+        iteration = 0
+        max_iterations = 5
+
+        while iteration < max_iterations:
+            iteration += 1
+            response = await self.native_client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                tools=tools
+            )
+            message = response.choices[0].message
+            tool_calls = message.tool_calls or []
+
+            assistant_message: Dict[str, Any] = {
+                "role": "assistant",
+                "content": message.content or ""
+            }
+            reasoning_content = getattr(message, "reasoning_content", None)
+            if reasoning_content:
+                assistant_message["reasoning_content"] = reasoning_content
+            if tool_calls:
+                assistant_message["tool_calls"] = [tool_call.model_dump() for tool_call in tool_calls]
+            messages.append(assistant_message)
+
+            if tool_calls:
+                for tool_call in tool_calls:
+                    tool_name = tool_call.function.name
+                    try:
+                        tool_args = json.loads(tool_call.function.arguments or "{}")
+                    except Exception:
+                        tool_args = {}
+
+                    tool_result = await self._execute_tool(tool_name, tool_args)
+                    self._collect_tool_outputs(tool_name, tool_args, tool_result, intermediate_steps, sources, search_results)
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": tool_result
+                    })
+                continue
+
+            output = message.content or self._format_output(intermediate_steps)
+            return AgentResult(
+                task_id=task.id,
+                agent_name=self.name,
+                agent_type=self.agent_type,
+                success=True,
+                output=output,
+                intermediate_steps=intermediate_steps,
+                sources=sources,
+                search_results=search_results,
+                execution_time=time.time() - start_time
+            )
+
+        output = self._format_output(intermediate_steps)
+        return AgentResult(
+            task_id=task.id,
+            agent_name=self.name,
+            agent_type=self.agent_type,
+            success=True,
+            output=output,
+            intermediate_steps=intermediate_steps,
+            sources=sources,
+            search_results=search_results,
+            execution_time=time.time() - start_time
+        )
+
+    async def _native_stream_execute(
+        self,
+        task: AgentTask,
+        kb_ids: List[int],
+        use_web_search: bool,
+        query: str,
+        start_time: float
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """DeepSeek 原生流式工具循环。"""
+        intermediate_steps = []
+        sources = []
+        search_results = []
+
+        system_prompt = self._build_system_prompt_with_context(kb_ids, use_web_search)
+        messages = build_native_messages(system_prompt, query)
+        tools = [tool_to_openai_schema(tool) for tool in self.tools]
+
+        iteration = 0
+        max_iterations = 5
+
+        while iteration < max_iterations:
+            iteration += 1
+            response = await self.native_client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                tools=tools
+            )
+            message = response.choices[0].message
+            tool_calls = message.tool_calls or []
+
+            assistant_message: Dict[str, Any] = {
+                "role": "assistant",
+                "content": message.content or ""
+            }
+            reasoning_content = getattr(message, "reasoning_content", None)
+            if reasoning_content:
+                assistant_message["reasoning_content"] = reasoning_content
+            if tool_calls:
+                assistant_message["tool_calls"] = [tool_call.model_dump() for tool_call in tool_calls]
+            messages.append(assistant_message)
+
+            if tool_calls:
+                yield {
+                    "type": "thought",
+                    "content": "正在分析并决定使用工具..."
+                }
+                for tool_call in tool_calls:
+                    tool_name = tool_call.function.name
+                    try:
+                        tool_args = json.loads(tool_call.function.arguments or "{}")
+                    except Exception:
+                        tool_args = {}
+
+                    yield {
+                        "type": "tool_call",
+                        "tool_name": tool_name,
+                        "content": f"调用工具: {tool_name}"
+                    }
+
+                    tool_result = await self._execute_tool(tool_name, tool_args)
+                    self._collect_tool_outputs(tool_name, tool_args, tool_result, intermediate_steps, sources, search_results)
+
+                    yield {
+                        "type": "tool_result",
+                        "tool_name": tool_name,
+                        "content": tool_result[:500] + "..." if len(tool_result) > 500 else tool_result
+                    }
+
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": tool_result
+                    })
+                continue
+
+            output = message.content or self._format_output(intermediate_steps)
+            yield {
+                "type": "result",
+                "result": {
+                    "task_id": task.id,
+                    "agent_name": self.name,
+                    "agent_type": self.agent_type.value,
+                    "success": True,
+                    "output": output,
+                    "intermediate_steps": intermediate_steps,
+                    "sources": sources,
+                    "search_results": search_results,
+                    "execution_time": time.time() - start_time
+                }
+            }
+            return
+
+        yield {
+            "type": "result",
+            "result": {
+                "task_id": task.id,
+                "agent_name": self.name,
+                "agent_type": self.agent_type.value,
+                "success": True,
+                "output": self._format_output(intermediate_steps),
+                "intermediate_steps": intermediate_steps,
+                "sources": sources,
+                "search_results": search_results,
+                "execution_time": time.time() - start_time
+            }
+        }
+
+    def _collect_tool_outputs(
+        self,
+        tool_name: str,
+        tool_args: Dict[str, Any],
+        tool_result: str,
+        intermediate_steps: List[Dict[str, Any]],
+        sources: List[Dict[str, Any]],
+        search_results: List[Dict[str, Any]]
+    ) -> None:
+        """收集工具执行后的结构化结果。"""
+        if tool_name == "knowledge_search":
+            intermediate_steps.append({
+                "step": "knowledge_search",
+                "query": tool_args.get("query", ""),
+                "kb_ids": tool_args.get("kb_ids", []),
+                "result": tool_result
+            })
+            doc_pattern = r'\[文档\d+\] 来源: ([^|\n]+)\|([^(\n]+)(?:\s*\(相关度:\s*([\d.]+)\))?\n内容: (.*?)(?=\n\n---|\Z)'
+            for source, kb_name, rerank_score, content in re.findall(doc_pattern, tool_result, re.DOTALL):
+                source = source.strip()
+                kb_name = kb_name.strip()
+                content = content.strip()
+                if source:
+                    sources.append({
+                        "doc_name": source,
+                        "kb_name": kb_name,
+                        "content": content,
+                        "rerank_score": float(rerank_score) if rerank_score else None
+                    })
+            if not sources:
+                pattern_old = r'\[文档\d+\] 来源: ([^\n(]+)'
+                for source in re.findall(pattern_old, tool_result):
+                    source = source.strip()
+                    if source:
+                        sources.append({
+                            "doc_name": source,
+                            "kb_name": source.split('[')[0] if '[' in source else source,
+                            "content": "",
+                            "rerank_score": None
+                        })
+        elif tool_name == "web_search":
+            intermediate_steps.append({
+                "step": "web_search",
+                "query": tool_args.get("query", ""),
+                "result": tool_result
+            })
+            pattern = r'\[搜索结果\d+\] 标题: (.*?)\n链接: (.*?)\n摘要: (.*?)(?=\n\n---|\Z)'
+            for title, url, snippet in re.findall(pattern, tool_result, re.DOTALL):
+                search_results.append({
+                    "title": title.strip(),
+                    "url": url.strip(),
+                    "snippet": snippet.strip()
+                })
+        else:
+            intermediate_steps.append({
+                "step": tool_name,
+                "args": tool_args,
+                "result": tool_result
+            })
 
     def _format_output(self, steps: List[Dict]) -> str:
         """格式化输出"""

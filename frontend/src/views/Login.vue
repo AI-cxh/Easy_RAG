@@ -161,7 +161,7 @@ async function handleLogin() {
 
   try {
     await login(username.value, password.value)
-    const redirect = route.query.redirect as string || '/'
+    const redirect = route.query.redirect as string || '/rag'
     router.push(redirect)
   } catch (e: any) {
     error.value = e.message || '登录失败'

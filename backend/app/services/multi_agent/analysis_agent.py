@@ -2,8 +2,9 @@
 from typing import Dict, Optional, Any, AsyncGenerator, List
 import time
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
+from langchain_core.messages import SystemMessage, HumanMessage, ToolMessage
 from langchain_core.tools import BaseTool
+import json
 
 from app.config import settings
 from app.services.multi_agent.base_agent import (
@@ -11,6 +12,12 @@ from app.services.multi_agent.base_agent import (
 )
 from app.services.tools import get_all_tools
 from app.services.mcp_client import mcp_client
+from app.services.multi_agent.deepseek_tool_loop import (
+    should_use_native_deepseek,
+    build_native_client,
+    tool_to_openai_schema,
+    build_native_messages,
+)
 
 
 class AnalysisAgent(BaseAgent):
@@ -76,6 +83,7 @@ class AnalysisAgent(BaseAgent):
             openai_api_key=settings.OPENAI_API_KEY,
             openai_api_base=settings.OPENAI_API_BASE
         )
+        self.native_client = build_native_client()
 
     async def execute(self, task: AgentTask, context: Dict[str, Any]) -> AgentResult:
         """执行分析任务 - 使用LLM动态工具调用"""
@@ -85,6 +93,9 @@ class AnalysisAgent(BaseAgent):
         try:
             # 构建分析提示
             analysis_prompt = self._build_analysis_prompt(task, context)
+
+            if should_use_native_deepseek(self.model_name):
+                return await self._native_execute(task, analysis_prompt, start_time)
 
             # 构建消息
             messages = [SystemMessage(content=self.SYSTEM_PROMPT)]
@@ -185,6 +196,11 @@ class AnalysisAgent(BaseAgent):
                 "type": "thought",
                 "content": "开始分析检索到的信息..."
             }
+
+            if should_use_native_deepseek(self.model_name):
+                async for event in self._native_stream_execute(task, analysis_prompt, start_time):
+                    yield event
+                return
 
             # 构建消息
             messages = [SystemMessage(content=self.SYSTEM_PROMPT)]
@@ -290,3 +306,143 @@ class AnalysisAgent(BaseAgent):
 
         prompt += "请对以上信息进行深度分析，得出结论。"
         return prompt
+
+    async def _native_execute(self, task: AgentTask, prompt: str, start_time: float) -> AgentResult:
+        intermediate_steps = []
+        messages = build_native_messages(self.SYSTEM_PROMPT, prompt)
+        tools = [tool_to_openai_schema(tool) for tool in self.tools]
+
+        for _ in range(5):
+            response = await self.native_client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                tools=tools
+            )
+            message = response.choices[0].message
+            tool_calls = message.tool_calls or []
+            assistant_message = {"role": "assistant", "content": message.content or ""}
+            reasoning_content = getattr(message, "reasoning_content", None)
+            if reasoning_content:
+                assistant_message["reasoning_content"] = reasoning_content
+            if tool_calls:
+                assistant_message["tool_calls"] = [tool_call.model_dump() for tool_call in tool_calls]
+            messages.append(assistant_message)
+
+            if tool_calls:
+                for tool_call in tool_calls:
+                    try:
+                        tool_args = json.loads(tool_call.function.arguments or "{}")
+                    except Exception:
+                        tool_args = {}
+                    tool_result = await self._execute_tool(tool_call.function.name, tool_args)
+                    intermediate_steps.append({
+                        "step": tool_call.function.name,
+                        "args": tool_args,
+                        "result": tool_result
+                    })
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": tool_result
+                    })
+                continue
+
+            return AgentResult(
+                task_id=task.id,
+                agent_name=self.name,
+                agent_type=self.agent_type,
+                success=True,
+                output=message.content or "分析完成",
+                intermediate_steps=intermediate_steps,
+                execution_time=time.time() - start_time
+            )
+
+        return AgentResult(
+            task_id=task.id,
+            agent_name=self.name,
+            agent_type=self.agent_type,
+            success=True,
+            output="分析完成",
+            intermediate_steps=intermediate_steps,
+            execution_time=time.time() - start_time
+        )
+
+    async def _native_stream_execute(
+        self, task: AgentTask, prompt: str, start_time: float
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        intermediate_steps = []
+        messages = build_native_messages(self.SYSTEM_PROMPT, prompt)
+        tools = [tool_to_openai_schema(tool) for tool in self.tools]
+
+        for _ in range(5):
+            response = await self.native_client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                tools=tools
+            )
+            message = response.choices[0].message
+            tool_calls = message.tool_calls or []
+            assistant_message = {"role": "assistant", "content": message.content or ""}
+            reasoning_content = getattr(message, "reasoning_content", None)
+            if reasoning_content:
+                assistant_message["reasoning_content"] = reasoning_content
+            if tool_calls:
+                assistant_message["tool_calls"] = [tool_call.model_dump() for tool_call in tool_calls]
+            messages.append(assistant_message)
+
+            if tool_calls:
+                yield {"type": "thought", "content": "正在分析并决定是否使用工具..."}
+                for tool_call in tool_calls:
+                    try:
+                        tool_args = json.loads(tool_call.function.arguments or "{}")
+                    except Exception:
+                        tool_args = {}
+                    yield {
+                        "type": "tool_call",
+                        "tool_name": tool_call.function.name,
+                        "content": f"调用工具: {tool_call.function.name}"
+                    }
+                    tool_result = await self._execute_tool(tool_call.function.name, tool_args)
+                    intermediate_steps.append({
+                        "step": tool_call.function.name,
+                        "args": tool_args,
+                        "result": tool_result
+                    })
+                    yield {
+                        "type": "tool_result",
+                        "tool_name": tool_call.function.name,
+                        "content": tool_result[:500] + "..." if len(tool_result) > 500 else tool_result
+                    }
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": tool_result
+                    })
+                continue
+
+            yield {
+                "type": "result",
+                "result": {
+                    "task_id": task.id,
+                    "agent_name": self.name,
+                    "agent_type": self.agent_type.value,
+                    "success": True,
+                    "output": message.content or "分析完成",
+                    "intermediate_steps": intermediate_steps,
+                    "execution_time": time.time() - start_time
+                }
+            }
+            return
+
+        yield {
+            "type": "result",
+            "result": {
+                "task_id": task.id,
+                "agent_name": self.name,
+                "agent_type": self.agent_type.value,
+                "success": True,
+                "output": "分析完成",
+                "intermediate_steps": intermediate_steps,
+                "execution_time": time.time() - start_time
+            }
+        }

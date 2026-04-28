@@ -8,7 +8,7 @@ from app.models.database import get_db
 from app.models.models import User
 from app.models.schemas import (
     UserCreate, UserLogin, UserResponse, UserListResponse,
-    TokenResponse, PasswordChange, AdminInit, AdminUserCreate,
+    TokenResponse, RefreshTokenRequest, PasswordChange, AdminInit, AdminUserCreate,
     AdminUserUpdate, AdminPasswordReset, UserDetailResponse, UserStatsResponse
 )
 from app.services.auth import (
@@ -69,11 +69,11 @@ def login(data: UserLogin, db: Session = Depends(get_db)):
 
 @router.post("/refresh", response_model=TokenResponse)
 def refresh_token(
-    refresh_token: str,
+    data: RefreshTokenRequest,
     db: Session = Depends(get_db)
 ):
     """刷新令牌"""
-    payload = verify_token(refresh_token, "refresh")
+    payload = verify_token(data.refresh_token, "refresh")
     if not payload:
         raise HTTPException(status_code=401, detail="无效的刷新令牌")
 

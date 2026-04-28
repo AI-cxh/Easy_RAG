@@ -1,5 +1,7 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api'
 
+let refreshPromise: Promise<boolean> | null = null
+
 // 获取认证头
 function getAuthHeaders(): Record<string, string> {
   const token = localStorage.getItem('token')
@@ -9,20 +11,141 @@ function getAuthHeaders(): Record<string, string> {
   return {}
 }
 
-// 带认证的fetch封装
-async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
-  const headers = {
-    ...options.headers,
-    ...getAuthHeaders()
+function clearAuthState(): void {
+  localStorage.removeItem('token')
+  localStorage.removeItem('refresh_token')
+  localStorage.removeItem('user')
+}
+
+async function refreshAccessToken(): Promise<boolean> {
+  const refreshToken = localStorage.getItem('refresh_token')
+  if (!refreshToken) {
+    return false
   }
 
-  const response = await fetch(url, { ...options, headers })
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: refreshToken })
+        })
+
+        if (!response.ok) {
+          clearAuthState()
+          return false
+        }
+
+        const data = await response.json()
+        localStorage.setItem('token', data.access_token)
+        localStorage.setItem('refresh_token', data.refresh_token)
+        localStorage.setItem('user', JSON.stringify(data.user))
+        return true
+      } catch {
+        clearAuthState()
+        return false
+      } finally {
+        refreshPromise = null
+      }
+    })()
+  }
+
+  return refreshPromise
+}
+
+async function sendAuthorizedFormData(
+  url: string,
+  formData: FormData,
+  onProgress?: (progress: number) => void
+): Promise<any> {
+  const send = () => new Promise<{ status: number; responseText: string; statusText: string }>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', url)
+
+    const token = localStorage.getItem('token')
+    if (token) {
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+    }
+
+    xhr.upload.onprogress = (event) => {
+      if (onProgress && event.lengthComputable) {
+        const progress = Math.round((event.loaded / event.total) * 100)
+        onProgress(progress)
+      }
+    }
+
+    xhr.onload = () => {
+      resolve({
+        status: xhr.status,
+        responseText: xhr.responseText || '',
+        statusText: xhr.statusText
+      })
+    }
+
+    xhr.onerror = () => {
+      reject(new Error('上传文件失败'))
+    }
+
+    xhr.send(formData)
+  })
+
+  let result = await send()
+  if (result.status === 401) {
+    const refreshed = await refreshAccessToken()
+    if (!refreshed) {
+      clearAuthState()
+      window.location.href = '/login'
+      throw new Error('登录已过期')
+    }
+    result = await send()
+  }
+
+  if (result.status >= 200 && result.status < 300) {
+    return result.responseText ? JSON.parse(result.responseText) : {}
+  }
+
+  let errorMsg = '上传文件失败'
+  try {
+    const errorResponse = result.responseText ? JSON.parse(result.responseText) : null
+    if (errorResponse?.detail) {
+      errorMsg = errorResponse.detail
+    } else if (result.statusText) {
+      errorMsg = result.statusText
+    }
+  } catch {
+    if (result.statusText) {
+      errorMsg = result.statusText
+    }
+  }
+  throw new Error(errorMsg)
+}
+
+// 带认证的fetch封装
+async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const requestOptions = { ...options }
+  const response = await fetch(url, {
+    ...requestOptions,
+    headers: {
+      ...requestOptions.headers,
+      ...getAuthHeaders()
+    }
+  })
 
   // 处理401未授权响应
   if (response.status === 401) {
-    localStorage.removeItem('token')
-    localStorage.removeItem('refresh_token')
-    localStorage.removeItem('user')
+    const refreshed = await refreshAccessToken()
+    if (refreshed) {
+      return fetch(url, {
+        ...requestOptions,
+        headers: {
+          ...requestOptions.headers,
+          ...getAuthHeaders()
+        }
+      })
+    }
+
+    clearAuthState()
     window.location.href = '/login'
   }
 
@@ -162,59 +285,7 @@ export const uploadAPI = {
   upload: async (kbId: number, file: File, onProgress?: (progress: number) => void) => {
     const formData = new FormData()
     formData.append('file', file)
-
-    // 使用 XMLHttpRequest 来支持上传进度
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest()
-      xhr.open('POST', `${API_BASE_URL}/upload/${kbId}`)
-
-      // 添加认证头
-      const token = localStorage.getItem('token')
-      if (token) {
-        xhr.setRequestHeader('Authorization', `Bearer ${token}`)
-      }
-
-      xhr.upload.onprogress = (event) => {
-        if (onProgress && event.lengthComputable) {
-          const progress = Math.round((event.loaded / event.total) * 100)
-          onProgress(progress)
-        }
-      }
-
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          resolve(xhr.response ? JSON.parse(xhr.response) : {})
-        } else if (xhr.status === 401) {
-          localStorage.removeItem('token')
-          localStorage.removeItem('refresh_token')
-          localStorage.removeItem('user')
-          window.location.href = '/login'
-          reject(new Error('登录已过期'))
-        } else {
-          // 尝试解析错误响应
-          let errorMsg = '上传文件失败'
-          try {
-            const errorResponse = xhr.response ? JSON.parse(xhr.response) : null
-            if (errorResponse?.detail) {
-              errorMsg = errorResponse.detail
-            } else if (xhr.statusText) {
-              errorMsg = xhr.statusText
-            }
-          } catch {
-            if (xhr.statusText) {
-              errorMsg = xhr.statusText
-            }
-          }
-          reject(new Error(errorMsg))
-        }
-      }
-
-      xhr.onerror = () => {
-        reject(new Error('上传文件失败'))
-      }
-
-      xhr.send(formData)
-    })
+    return sendAuthorizedFormData(`${API_BASE_URL}/upload/${kbId}`, formData, onProgress)
   },
 
   // 删除文档
@@ -598,58 +669,7 @@ export const chatAPI = {
       formData.append('session_id', sessionId.toString())
     }
 
-    // 使用 XMLHttpRequest 来支持上传进度
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest()
-      xhr.open('POST', `${API_BASE_URL}/chat/upload`)
-
-      // 添加认证头
-      const token = localStorage.getItem('token')
-      if (token) {
-        xhr.setRequestHeader('Authorization', `Bearer ${token}`)
-      }
-
-      xhr.upload.onprogress = (event) => {
-        if (onProgress && event.lengthComputable) {
-          const progress = Math.round((event.loaded / event.total) * 100)
-          onProgress(progress)
-        }
-      }
-
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          resolve(xhr.response ? JSON.parse(xhr.response) : {})
-        } else if (xhr.status === 401) {
-          localStorage.removeItem('token')
-          localStorage.removeItem('refresh_token')
-          localStorage.removeItem('user')
-          window.location.href = '/login'
-          reject(new Error('登录已过期'))
-        } else {
-          // 尝试解析错误响应
-          let errorMsg = '上传文件失败'
-          try {
-            const errorResponse = xhr.response ? JSON.parse(xhr.response) : null
-            if (errorResponse?.detail) {
-              errorMsg = errorResponse.detail
-            } else if (xhr.statusText) {
-              errorMsg = xhr.statusText
-            }
-          } catch {
-            if (xhr.statusText) {
-              errorMsg = xhr.statusText
-            }
-          }
-          reject(new Error(errorMsg))
-        }
-      }
-
-      xhr.onerror = () => {
-        reject(new Error('上传文件失败'))
-      }
-
-      xhr.send(formData)
-    })
+    return sendAuthorizedFormData(`${API_BASE_URL}/chat/upload`, formData, onProgress)
   }
 }
 

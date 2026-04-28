@@ -78,6 +78,10 @@ class EmbeddingService:
             )
         return collection
 
+    def build_chunk_id(self, kb_id: int, doc_id: int, chunk_index: int) -> str:
+        """构建分块向量ID。"""
+        return f"kb{kb_id}_doc{doc_id}_chunk{chunk_index}"
+
     def _ensure_embeddings(self) -> None:
         """确保嵌入服务可用，如果失败则回退到本地模型"""
         if self._fallback_enabled:
@@ -147,7 +151,7 @@ class EmbeddingService:
         for i, meta in enumerate(metadatas):
             doc_id = meta.get('doc_id', 'unknown')
             chunk_index = meta.get('chunk_index', i)
-            ids.append(f"kb{kb_id}_doc{doc_id}_chunk{chunk_index}")
+            ids.append(self.build_chunk_id(kb_id, doc_id, chunk_index))
 
         # 添加到ChromaDB
         collection.add(
@@ -316,6 +320,51 @@ class EmbeddingService:
             print(f"删除文档向量失败: {e}")
             return False
 
+    def delete_chunk_by_sort_order(self, kb_id: int, doc_id: int, chunk_index: int) -> bool:
+        """
+        删除指定分块向量。
+
+        Args:
+            kb_id: 知识库ID
+            doc_id: 文档ID
+            chunk_index: 分块排序号
+
+        Returns:
+            是否成功删除
+        """
+        try:
+            collection = self.get_or_create_collection(kb_id)
+            collection.delete(ids=[self.build_chunk_id(kb_id, doc_id, chunk_index)])
+            return True
+        except Exception as e:
+            print(f"删除分块向量失败: {e}")
+            return False
+
+    def upsert_chunk_vector(
+        self,
+        kb_id: int,
+        doc_id: int,
+        chunk_index: int,
+        content: str,
+        metadata: dict
+    ) -> bool:
+        """
+        创建或更新单个分块向量。
+        """
+        try:
+            collection = self.get_or_create_collection(kb_id)
+            embeddings = self._embed_batch([content])
+            collection.upsert(
+                ids=[self.build_chunk_id(kb_id, doc_id, chunk_index)],
+                embeddings=embeddings,
+                documents=[content],
+                metadatas=[metadata]
+            )
+            return True
+        except Exception as e:
+            print(f"更新分块向量失败: {e}")
+            return False
+
     def rebuild_vectors(self, kb_id: int, doc_id: int, chunks: List[str], metadatas: List[dict]) -> int:
         """
         重建指定文档的向量
@@ -445,6 +494,28 @@ class EmbeddingService:
             return True
         except Exception as e:
             print(f"设置分块启用状态失败: {e}")
+            return False
+
+    def set_chunk_enabled_by_sort_order(self, kb_id: int, doc_id: int, chunk_index: int, enabled: bool) -> bool:
+        """
+        设置单个分块的启用状态。
+        """
+        try:
+            collection = self.get_or_create_collection(kb_id)
+            chunk_id = self.build_chunk_id(kb_id, doc_id, chunk_index)
+            item = collection.get(ids=[chunk_id])
+            if not item.get('ids'):
+                return False
+
+            metadata = dict(item['metadatas'][0])
+            metadata['enabled'] = enabled
+            collection.update(
+                ids=[chunk_id],
+                metadatas=[metadata]
+            )
+            return True
+        except Exception as e:
+            print(f"设置单个分块启用状态失败: {e}")
             return False
 
 

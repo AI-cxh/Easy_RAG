@@ -4,12 +4,14 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
 from langchain_core.tools import BaseTool, StructuredTool
 from pydantic import BaseModel
+from openai import AsyncOpenAI
 import json
 import logging
 
 from app.config import settings
 from app.services.tools import get_all_tools
 from app.services.mcp_client import mcp_client
+from app.services.message_utils import build_history_message, serialize_ai_message
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +26,10 @@ class AgentService:
             temperature=0.7,
             openai_api_key=settings.OPENAI_API_KEY,
             openai_api_base=settings.OPENAI_API_BASE
+        )
+        self.native_client = AsyncOpenAI(
+            api_key=settings.OPENAI_API_KEY,
+            base_url=settings.OPENAI_API_BASE
         )
         self._builtin_tools = get_all_tools()
         self.tools: List[BaseTool] = self._builtin_tools.copy()
@@ -82,6 +88,200 @@ class AgentService:
     def get_all_tools(self) -> List[BaseTool]:
         """获取所有工具（内置+MCP）"""
         return self.tools
+
+    def _should_use_native_deepseek_loop(self) -> bool:
+        """DeepSeek thinking/tool-call 需要走原生 SDK 循环。"""
+        model_name = (settings.MODEL_NAME or "").lower()
+        base_url = (settings.OPENAI_API_BASE or "").lower()
+        return "deepseek" in model_name or "deepseek" in base_url
+
+    def _tool_to_openai_schema(self, tool: BaseTool) -> Dict[str, Any]:
+        """将 LangChain Tool 转换为 OpenAI function tool schema。"""
+        parameters: Dict[str, Any] = {"type": "object", "properties": {}}
+        args_schema = getattr(tool, "args_schema", None)
+
+        if isinstance(args_schema, dict):
+            parameters = args_schema if args_schema.get("type") == "object" else {"type": "object", "properties": {}}
+        elif args_schema is not None:
+            try:
+                parameters = args_schema.model_json_schema()
+            except Exception:
+                parameters = {"type": "object", "properties": {}}
+
+        return {
+            "type": "function",
+            "function": {
+                "name": tool.name,
+                "description": getattr(tool, "description", "") or f"Tool: {tool.name}",
+                "parameters": parameters
+            }
+        }
+
+    def _build_native_messages(
+        self,
+        system_prompt: str,
+        query: str,
+        chat_history: Optional[List[Dict]] = None,
+        kb_ids: Optional[List[int]] = None,
+        project_context: Optional[str] = None,
+        session_context: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """构建原生 OpenAI SDK 消息。旧轮次不回放 reasoning_content。"""
+        messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
+
+        if project_context:
+            messages.append({"role": "system", "content": project_context})
+        if session_context:
+            messages.append({"role": "system", "content": session_context})
+        if kb_ids:
+            messages.append({
+                "role": "system",
+                "content": f"\n当前可用的知识库ID: {kb_ids}\n你可以使用这些ID进行知识库检索。"
+            })
+
+        if chat_history:
+            for msg in chat_history[-6:]:
+                if msg.get("role") == "user":
+                    messages.append({"role": "user", "content": msg.get("content", "")})
+                elif msg.get("role") == "assistant":
+                    messages.append({"role": "assistant", "content": msg.get("content", "")})
+
+        messages.append({"role": "user", "content": query})
+        return messages
+
+    async def _run_native_deepseek_loop(
+        self,
+        query: str,
+        chat_history: Optional[List[Dict]],
+        kb_ids: Optional[List[int]],
+        project_context: Optional[str],
+        session_context: Optional[str],
+        use_web_search: bool,
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """DeepSeek 专用工具循环，显式维护 reasoning_content。"""
+        system_prompt = self._build_system_prompt(bool(kb_ids), use_web_search)
+        messages = self._build_native_messages(
+            system_prompt=system_prompt,
+            query=query,
+            chat_history=chat_history,
+            kb_ids=kb_ids,
+            project_context=project_context,
+            session_context=session_context
+        )
+        tools = [self._tool_to_openai_schema(tool) for tool in self.tools]
+
+        collected_search_results = []
+        collected_sources = []
+        iteration = 0
+        max_iterations = settings.AGENT_MAX_ITERATIONS
+
+        while iteration < max_iterations:
+            iteration += 1
+            response = await self.native_client.chat.completions.create(
+                model=settings.MODEL_NAME,
+                messages=messages,
+                tools=tools
+            )
+            message = response.choices[0].message
+            tool_calls = message.tool_calls or []
+
+            assistant_message: Dict[str, Any] = {
+                "role": "assistant",
+                "content": message.content or ""
+            }
+
+            reasoning_content = getattr(message, "reasoning_content", None)
+            if reasoning_content:
+                assistant_message["reasoning_content"] = reasoning_content
+
+            if tool_calls:
+                assistant_message["tool_calls"] = [tool_call.model_dump() for tool_call in tool_calls]
+
+            messages.append(assistant_message)
+
+            if tool_calls:
+                yield {
+                    "type": "thought",
+                    "content": "正在分析问题并决定使用工具..."
+                }
+
+                for tool_call in tool_calls:
+                    tool_name = tool_call.function.name
+                    try:
+                        tool_args = json.loads(tool_call.function.arguments or "{}")
+                    except json.JSONDecodeError:
+                        tool_args = {}
+
+                    yield {
+                        "type": "tool_call",
+                        "tool_name": tool_name,
+                        "tool_args": tool_args,
+                        "content": f"调用工具: {tool_name}"
+                    }
+
+                    tool_result, search_data = await self._execute_tool_with_data(tool_name, tool_args)
+
+                    if search_data:
+                        if search_data.get("type") == "web_search":
+                            collected_search_results.extend(search_data.get("results", []))
+                        elif search_data.get("type") == "knowledge_search":
+                            collected_sources.extend(search_data.get("sources", []))
+
+                    yield {
+                        "type": "tool_result",
+                        "tool_name": tool_name,
+                        "content": tool_result[:500] + "..." if len(tool_result) > 500 else tool_result
+                    }
+
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": tool_result
+                    })
+                continue
+
+            answer_content = message.content or ""
+            if answer_content:
+                yield {
+                    "type": "answer",
+                    "content": answer_content
+                }
+
+            yield {
+                "type": "assistant_message",
+                "payload": {"content": answer_content}
+            }
+
+            if collected_search_results or collected_sources:
+                source_details = []
+                kb_names = []
+                for src in collected_sources:
+                    if isinstance(src, dict):
+                        source_details.append({
+                            "kb_name": src.get("kb_name", "未知知识库"),
+                            "doc_name": src.get("doc_name") or src.get("source", "未知文档"),
+                            "content": src.get("content", ""),
+                            "rerank_score": src.get("rerank_score")
+                        })
+                        kb_name = src.get("kb_name", "未知知识库")
+                        if kb_name not in kb_names:
+                            kb_names.append(kb_name)
+                    else:
+                        source_details.append({
+                            "kb_name": str(src),
+                            "doc_name": str(src),
+                            "content": ""
+                        })
+                        if str(src) not in kb_names:
+                            kb_names.append(str(src))
+
+                yield {
+                    "type": "search_data",
+                    "search_results": collected_search_results if collected_search_results else None,
+                    "sources": kb_names if kb_names else None,
+                    "source_details": source_details if source_details else None
+                }
+            return
 
     def _build_system_prompt(self, has_kb: bool = True, use_web_search: bool = True) -> str:
         """
@@ -183,6 +383,26 @@ MCP工具（可用）：
         """
         # 构建系统提示词
         has_kb = bool(kb_ids)
+        if self._should_use_native_deepseek_loop():
+            try:
+                async for event in self._run_native_deepseek_loop(
+                    query=query,
+                    chat_history=chat_history,
+                    kb_ids=kb_ids,
+                    project_context=project_context,
+                    session_context=session_context,
+                    use_web_search=use_web_search
+                ):
+                    yield event
+                return
+            except Exception as e:
+                logging.error(f"Agent execution error: {e}", exc_info=True)
+                yield {
+                    "type": "error",
+                    "content": f"Agent执行出错: {str(e)}"
+                }
+                return
+
         system_prompt = self._build_system_prompt(has_kb, use_web_search)
 
         # 构建消息列表
@@ -200,10 +420,7 @@ MCP工具（可用）：
         # 添加聊天历史
         if chat_history:
             for msg in chat_history[-6:]:
-                if msg['role'] == 'user':
-                    messages.append(HumanMessage(content=msg['content']))
-                elif msg['role'] == 'assistant':
-                    messages.append(AIMessage(content=msg['content']))
+                messages.append(build_history_message(msg))
 
         # 添加当前查询
         messages.append(HumanMessage(content=query))
@@ -274,14 +491,18 @@ MCP工具（可用）：
                         ))
 
                 else:
-                    # 没有工具调用，生成最终回答
-                    # 流式输出最终回答
-                    async for chunk in self.llm.astream(messages):
-                        if chunk.content:
-                            yield {
-                                "type": "answer",
-                                "content": chunk.content
-                            }
+                    # 没有工具调用，直接使用当前响应作为最终回答
+                    answer_content = response.content or ""
+                    if answer_content:
+                        yield {
+                            "type": "answer",
+                            "content": answer_content
+                        }
+
+                    yield {
+                        "type": "assistant_message",
+                        "payload": serialize_ai_message(response)
+                    }
 
                     # 发送收集到的搜索结果
                     if collected_search_results or collected_sources:
@@ -440,18 +661,15 @@ MCP工具（可用）：
         # 添加聊天历史
         if chat_history:
             for msg in chat_history[-6:]:
-                if msg['role'] == 'user':
-                    messages.append(HumanMessage(content=msg['content']))
-                elif msg['role'] == 'assistant':
-                    messages.append(AIMessage(content=msg['content']))
+                messages.append(build_history_message(msg))
 
         # 添加当前查询
         messages.append(HumanMessage(content=query))
 
-        # 流式生成响应
-        async for chunk in self.llm.astream(messages):
-            if chunk.content:
-                yield chunk.content
+        # 直接复用一次调用的结果，避免 thinking 模式多轮上下文不一致
+        response = await self.llm.ainvoke(messages)
+        if response.content:
+            yield response.content
 
 
 # 全局Agent服务实例

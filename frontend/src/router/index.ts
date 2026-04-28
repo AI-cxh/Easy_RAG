@@ -6,7 +6,8 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      redirect: '/rag'
+      name: 'LandingIntro',
+      component: () => import('../views/LandingIntro.vue')
     },
     {
       path: '/login',
@@ -99,7 +100,7 @@ router.beforeEach(async (to, from, next) => {
   if (to.meta.guest) {
     // 已登录用户访问登录/注册页，重定向到首页
     if (isAuthenticated.value) {
-      return next('/')
+      return next('/rag')
     }
     return next()
   }
@@ -111,7 +112,7 @@ router.beforeEach(async (to, from, next) => {
 
   // 需要管理员权限的页面
   if (to.meta.requiresAdmin && !isAdmin.value) {
-    return next('/')
+    return next('/rag')
   }
 
   next()

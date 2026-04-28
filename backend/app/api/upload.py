@@ -192,6 +192,7 @@ async def delete_document(
         # 删除关联的分块（级联删除会自动处理）
         # 删除数据库记录
         kb_id = document.kb_id
+        embedding_service.delete_chunks_by_doc_id(kb_id, doc_id)
         db.delete(document)
         db.commit()
 
@@ -231,9 +232,14 @@ async def update_document(
         document.source = request.source
     if request.enabled is not None:
         document.enabled = request.enabled
+        db.query(Chunk).filter(Chunk.doc_id == doc_id).update({"enabled": request.enabled})
 
     db.commit()
     db.refresh(document)
+
+    if request.enabled is not None:
+        embedding_service.set_chunks_enabled_by_doc_id(document.kb_id, doc_id, request.enabled)
+
     return document
 
 

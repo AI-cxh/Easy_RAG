@@ -250,7 +250,14 @@ async def chat(
             history = []
         session_memory = memory_service.get_session_memory(db, session_id)
         chat_history = memory_service.trim_chat_history(
-            [{"role": msg.role, "content": msg.content} for msg in history]
+            [
+                {
+                    "role": msg.role,
+                    "content": msg.content,
+                    "assistant_message": parse_message_metadata(msg).get("assistant_message")
+                }
+                for msg in history
+            ]
         )
         project_context = memory_service.build_project_memory_context(db, session.project_id)
         session_context = memory_service.build_session_memory_context(session_memory)
@@ -566,6 +573,7 @@ async def stream_agent_response(
     search_results = None
     sources = None
     source_details = None
+    assistant_message_payload = None
 
     try:
         async for event in agent_generator:
@@ -598,6 +606,10 @@ async def stream_agent_response(
                 sources = event.get("sources")
                 source_details = event.get("source_details")
 
+            elif event_type == "assistant_message":
+                # 内部事件：保存完整 assistant metadata，不透传给前端
+                assistant_message_payload = event.get("payload")
+
             elif event_type == "error":
                 # 错误
                 error_data = {"type": "error", "message": event.get("content", "未知错误")}
@@ -614,6 +626,8 @@ async def stream_agent_response(
             extra_data["sources"] = sources
         if source_details:
             extra_data["source_details"] = source_details
+        if assistant_message_payload:
+            extra_data["assistant_message"] = assistant_message_payload
         save_assistant_message(
             db=db,
             session_id=session_id,
@@ -636,6 +650,8 @@ async def stream_agent_response(
         extra_data["sources"] = sources
     if source_details:
         extra_data["source_details"] = source_details
+    if assistant_message_payload:
+        extra_data["assistant_message"] = assistant_message_payload
     save_assistant_message(
         db=db,
         session_id=session_id,
@@ -709,7 +725,14 @@ async def chat_with_agent(
             history = []
         session_memory = memory_service.get_session_memory(db, session_id)
         chat_history = memory_service.trim_chat_history(
-            [{"role": msg.role, "content": msg.content} for msg in history]
+            [
+                {
+                    "role": msg.role,
+                    "content": msg.content,
+                    "assistant_message": parse_message_metadata(msg).get("assistant_message")
+                }
+                for msg in history
+            ]
         )
         project_context = memory_service.build_project_memory_context(db, session.project_id)
         session_context = memory_service.build_session_memory_context(session_memory)
