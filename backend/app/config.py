@@ -1,5 +1,9 @@
 from pydantic_settings import BaseSettings
 from typing import Optional, List, Dict
+from pathlib import Path
+
+
+BASE_DIR = Path(__file__).resolve().parents[1]
 
 
 class Settings(BaseSettings):
@@ -41,6 +45,20 @@ class Settings(BaseSettings):
     AGENT_MAX_ITERATIONS: int = 10  # Agent最大迭代次数
     AGENT_VERBOSE: bool = False     # 是否输出详细日志
 
+    # Mem0 跨会话用户长期记忆配置
+    MEM0_ENABLED: bool = False
+    MEM0_TOP_K: int = 5
+    MEM0_AGENT_ID: str = "agentic_rag"
+    MEM0_VECTOR_STORE_PROVIDER: str = "qdrant"
+    MEM0_QDRANT_COLLECTION: str = "agentic_rag_user_memories"
+    MEM0_QDRANT_PATH: str = "./mem0_qdrant"
+    MEM0_LLM_PROVIDER: Optional[str] = None
+    MEM0_LLM_MODEL: Optional[str] = None
+    MEM0_LLM_TEMPERATURE: float = 0.1
+    MEM0_EMBEDDER_PROVIDER: Optional[str] = None
+    MEM0_EMBEDDER_MODEL: Optional[str] = None
+    MEM0_EMBEDDER_DIMS: Optional[int] = None
+
     # JWT认证配置
     JWT_SECRET_KEY: str = ""  # 生产环境必须设置强密钥
     JWT_ALGORITHM: str = "HS256"
@@ -71,7 +89,7 @@ class Settings(BaseSettings):
             self.OPENAI_API_BASE = self.OPENAI_BASE_URL
 
     class Config:
-        env_file = ".env"
+        env_file = str(BASE_DIR / ".env")
         extra = "ignore"  # 允许额外的环境变量
 
 

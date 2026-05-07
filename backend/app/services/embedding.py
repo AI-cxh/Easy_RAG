@@ -411,51 +411,6 @@ class EmbeddingService:
             print(f"获取分块数据失败: {e}")
             return []
 
-    def update_chunk_enabled_status(self, kb_id: int, doc_id: int, enabled: bool) -> bool:
-        """
-        更新文档所有分块的启用状态
-
-        Args:
-            kb_id: 知识库ID
-            doc_id: 文档ID
-            enabled: 启用状态
-
-        Returns:
-            是否成功更新
-        """
-        try:
-            collection = self.get_or_create_collection(kb_id)
-            # 获取所有属于该文档的分块
-            all_items = collection.get()
-            ids_to_update = []
-            metadatas_to_update = []
-
-            for i, meta in enumerate(all_items['metadatas']):
-                if meta.get('doc_id') == doc_id:
-                    ids_to_update.append(all_items['ids'][i])
-                    # 更新 metadata 中的 enabled 字段
-                    new_meta = dict(meta)
-                    new_meta['enabled'] = enabled
-                    metadatas_to_update.append(new_meta)
-
-            if ids_to_update:
-                # ChromaDB 需要先删除再添加来更新 metadata
-                collection.delete(ids=ids_to_update)
-
-                # 获取对应的文档和嵌入向量
-                for i, chunk_id in enumerate(ids_to_update):
-                    # 重新添加，使用更新后的 metadata
-                    # 注意：这里需要重新获取文档内容
-                    pass
-
-                # 简化方案：使用 upsert（如果支持）
-                # 或者直接在 metadata 中标记
-
-            return True
-        except Exception as e:
-            print(f"更新分块状态失败: {e}")
-            return False
-
     def set_chunks_enabled_by_doc_id(self, kb_id: int, doc_id: int, enabled: bool) -> bool:
         """
         设置文档所有分块的启用状态

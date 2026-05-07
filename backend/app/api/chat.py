@@ -21,6 +21,7 @@ from app.services.search import get_search_service
 from app.services.embedding import embedding_service
 from app.services.agent import agent_service
 from app.services.memory import memory_service
+from app.services.user_memory import user_memory_service
 from app.services.auth import get_current_user, require_user, resolve_project_for_user
 from app.utils.file_parser import FileParser
 from app.config import settings
@@ -134,7 +135,11 @@ async def stream_response(
     sources: List[dict] | None,  # 修改为 dict 列表，包含详细信息
     search_results: List[dict] | None,
     use_web_search: bool,
-    db: Session
+    db: Session,
+    user_id: int,
+    project_id: int | None,
+    session_type: str,
+    user_message: str
 ) -> AsyncGenerator[str, None]:
     """流式发送响应"""
     full_response = ""
@@ -159,6 +164,14 @@ async def stream_response(
             content=full_response,
             extra_data=extra_data or None
         )
+        user_memory_service.schedule_add_turn(
+            user_id=user_id,
+            session_id=session_id,
+            project_id=project_id,
+            session_type=session_type,
+            user_message=user_message,
+            assistant_message=full_response
+        )
         raise
     except Exception as e:
         # 发送错误信息
@@ -178,6 +191,14 @@ async def stream_response(
         extra_data=extra_data or None
     )
     maybe_refresh_session_memory(db, session_id)
+    user_memory_service.schedule_add_turn(
+        user_id=user_id,
+        session_id=session_id,
+        project_id=project_id,
+        session_type=session_type,
+        user_message=user_message,
+        assistant_message=full_response
+    )
 
     # 发送完成信号和元数据
     # 提取去重的知识库名称列表
@@ -261,6 +282,13 @@ async def chat(
         )
         project_context = memory_service.build_project_memory_context(db, session.project_id)
         session_context = memory_service.build_session_memory_context(session_memory)
+        user_memory_context = await user_memory_service.build_user_memory_context(
+            user_id=user.id,
+            query=request.message
+        )
+        session_context = user_memory_service.combine_contexts(session_context, user_memory_context)
+        project_id = session.project_id
+        session_type = session.session_type
         db.expunge_all()
 
         # 从知识库检索上下文
@@ -310,7 +338,11 @@ async def chat(
                 sources=source_details if source_details else None,
                 search_results=search_results if request.use_web_search else None,
                 use_web_search=request.use_web_search,
-                db=db
+                db=db,
+                user_id=user.id,
+                project_id=project_id,
+                session_type=session_type,
+                user_message=request.message
             ),
             media_type="text/event-stream"
         )
@@ -565,7 +597,11 @@ async def rename_session(
 async def stream_agent_response(
     session_id: int,
     agent_generator: AsyncGenerator[dict, None],
-    db: Session
+    db: Session,
+    user_id: int,
+    project_id: int | None,
+    session_type: str,
+    user_message: str
 ) -> AsyncGenerator[str, None]:
     """流式发送Agent响应"""
     full_response = ""
@@ -634,6 +670,14 @@ async def stream_agent_response(
             content=full_response,
             extra_data=extra_data or None
         )
+        user_memory_service.schedule_add_turn(
+            user_id=user_id,
+            session_id=session_id,
+            project_id=project_id,
+            session_type=session_type,
+            user_message=user_message,
+            assistant_message=full_response
+        )
         raise
     except Exception as e:
         error_data = {"type": "error", "message": str(e)}
@@ -659,6 +703,14 @@ async def stream_agent_response(
         extra_data=extra_data or None
     )
     maybe_refresh_session_memory(db, session_id)
+    user_memory_service.schedule_add_turn(
+        user_id=user_id,
+        session_id=session_id,
+        project_id=project_id,
+        session_type=session_type,
+        user_message=user_message,
+        assistant_message=full_response
+    )
 
     # 发送完成信号
     end_data = {
@@ -736,6 +788,13 @@ async def chat_with_agent(
         )
         project_context = memory_service.build_project_memory_context(db, session.project_id)
         session_context = memory_service.build_session_memory_context(session_memory)
+        user_memory_context = await user_memory_service.build_user_memory_context(
+            user_id=user.id,
+            query=request.message
+        )
+        session_context = user_memory_service.combine_contexts(session_context, user_memory_context)
+        project_id = session.project_id
+        session_type = session.session_type
         db.expunge_all()
 
         # 执行Agent
@@ -753,7 +812,11 @@ async def chat_with_agent(
             stream_agent_response(
                 session_id=session_id,
                 agent_generator=agent_generator,
-                db=db
+                db=db,
+                user_id=user.id,
+                project_id=project_id,
+                session_type=session_type,
+                user_message=request.message
             ),
             media_type="text/event-stream"
         )

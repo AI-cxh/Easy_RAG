@@ -25,6 +25,7 @@ from app.services.multi_agent import (
     AgentType
 )
 from app.services.memory import memory_service
+from app.services.user_memory import user_memory_service
 from app.services.auth import get_current_user, require_user, resolve_project_for_user
 
 router = APIRouter()
@@ -372,6 +373,8 @@ async def multi_agent_chat(
             )
             agent_registry.register(custom_agent)
 
+        project_id = session.project_id
+
         # 流式请求生命周期较长，避免旧 ORM 实例在后续插入时与 SQLite 复用的主键冲突
         db.expunge_all()
 
@@ -388,8 +391,16 @@ async def multi_agent_chat(
             "sources": [],
             "search_results": []
         }
-        context["project_context"] = memory_service.build_project_memory_context(db, session.project_id)
-        context["session_context"] = memory_service.build_session_memory_context(session_memory)
+        context["project_context"] = memory_service.build_project_memory_context(db, project_id)
+        session_context = memory_service.build_session_memory_context(session_memory)
+        user_memory_context = await user_memory_service.build_user_memory_context(
+            user_id=user.id,
+            query=request.message
+        )
+        context["session_context"] = user_memory_service.combine_contexts(
+            session_context,
+            user_memory_context
+        )
 
         # 创建任务
         from app.services.multi_agent.base_agent import AgentTask
@@ -524,6 +535,15 @@ async def multi_agent_chat(
                 messages
             ):
                 memory_service.refresh_session_memory(db, session_id, messages)
+
+            user_memory_service.schedule_add_turn(
+                user_id=user.id,
+                session_id=session_id,
+                project_id=project_id,
+                session_type="multi_agent",
+                user_message=request.message,
+                assistant_message=full_response
+            )
 
         if interrupted:
             raise asyncio.CancelledError()

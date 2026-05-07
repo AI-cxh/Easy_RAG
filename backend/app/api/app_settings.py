@@ -12,6 +12,18 @@ router = APIRouter()
 SETTINGS_FILE = "./settings.json"
 
 
+MASKED_PREFIX = "***"
+
+
+def mask_api_key(key: str) -> str:
+    """脱敏 API Key，只显示末尾 4 位"""
+    if not key:
+        return ""
+    if len(key) <= 4:
+        return MASKED_PREFIX
+    return MASKED_PREFIX + key[-4:]
+
+
 class ModelSettings(BaseModel):
     model: str = ""
     apiKey: str = ""
@@ -66,15 +78,34 @@ def load_settings_from_file() -> SettingsData:
 
 
 def save_settings_to_file(data: SettingsData):
-    """保存设置到文件"""
+    """保存设置到文件（API Key 为脱敏值时保留已有值）"""
+    existing = {}
+    if os.path.exists(SETTINGS_FILE):
+        try:
+            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
+                existing = json.load(f)
+        except:
+            pass
+
+    payload = data.model_dump()
+
+    for section in ("llm", "embedding", "rerank"):
+        if payload[section]["apiKey"].startswith(MASKED_PREFIX):
+            payload[section]["apiKey"] = existing.get(section, {}).get("apiKey", "")
+
     with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data.model_dump(), f, ensure_ascii=False, indent=2)
+        json.dump(payload, f, ensure_ascii=False, indent=2)
 
 
 @router.get("/settings")
 async def get_settings():
-    """获取当前设置"""
-    return load_settings_from_file().model_dump()
+    """获取当前设置（API Key 脱敏返回）"""
+    data = load_settings_from_file()
+    result = data.model_dump()
+    result["llm"]["apiKey"] = mask_api_key(data.llm.apiKey)
+    result["embedding"]["apiKey"] = mask_api_key(data.embedding.apiKey)
+    result["rerank"]["apiKey"] = mask_api_key(data.rerank.apiKey)
+    return result
 
 
 @router.post("/settings")
@@ -85,21 +116,21 @@ async def save_settings(data: SettingsData):
     # 更新运行时设置
     if data.llm.model:
         settings.MODEL_NAME = data.llm.model
-    if data.llm.apiKey:
+    if data.llm.apiKey and not data.llm.apiKey.startswith(MASKED_PREFIX):
         settings.OPENAI_API_KEY = data.llm.apiKey
     if data.llm.apiUrl:
         settings.OPENAI_API_BASE = data.llm.apiUrl
 
     if data.embedding.model:
         settings.EMBEDDING_MODEL = data.embedding.model
-    if data.embedding.apiKey:
+    if data.embedding.apiKey and not data.embedding.apiKey.startswith(MASKED_PREFIX):
         settings.EMBEDDING_API_KEY = data.embedding.apiKey
     if data.embedding.apiUrl:
         settings.EMBEDDING_API_BASE = data.embedding.apiUrl
 
     if data.rerank.model:
         settings.RERANK_MODEL = data.rerank.model
-    if data.rerank.apiKey:
+    if data.rerank.apiKey and not data.rerank.apiKey.startswith(MASKED_PREFIX):
         settings.RERANK_API_KEY = data.rerank.apiKey
     if data.rerank.apiUrl:
         settings.RERANK_API_BASE = data.rerank.apiUrl
