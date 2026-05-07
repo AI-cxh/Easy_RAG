@@ -1,0 +1,37 @@
+# Claude Code
+.codex
+.claude/
+
+# Project docs (not project code)
+AGENTS.md
+CLAUDE.md
+后续开发计划.txt
+知识库管理模块重构文档.md
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+
+# Environment
+.env
+
+# Runtime data
+backend/rag.db
+backend/chroma_db/
+backend/uploads/
+backend/mem0_qdrant/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
