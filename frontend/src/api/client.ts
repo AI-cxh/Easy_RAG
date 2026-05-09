@@ -1151,6 +1151,42 @@ export interface ProjectMemory {
   created_at: string
 }
 
+export interface UserMemory {
+  id: string
+  memory: string
+  metadata: {
+    project_id?: number
+    session_id?: number
+    session_type?: string
+    [key: string]: any
+  }
+  created_at?: string | null
+  updated_at?: string | null
+  score?: number | null
+}
+
+export const userMemoryAPI = {
+  getList: async (): Promise<UserMemory[]> => {
+    const response = await authFetch(`${API_BASE_URL}/user-memories`)
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '获取长期记忆失败')
+    }
+    return response.json()
+  },
+
+  delete: async (memoryId: string) => {
+    const response = await authFetch(`${API_BASE_URL}/user-memories/${encodeURIComponent(memoryId)}`, {
+      method: 'DELETE'
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || '删除长期记忆失败')
+    }
+    return response.json()
+  }
+}
+
 export const projectAPI = {
   getList: async (): Promise<{ items: Project[]; total: number }> => {
     const response = await authFetch(`${API_BASE_URL}/projects`)

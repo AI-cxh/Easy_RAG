@@ -103,9 +103,14 @@
             <h1 class="header-title">Agentic RAG</h1>
             <p class="header-project">当前项目：{{ currentProject?.name || '未选择项目' }}</p>
           </div>
-          <button class="header-memory-btn" @click="openProjectMemoryDrawer">
-            查看项目记忆
-          </button>
+          <div class="header-actions">
+            <button class="header-memory-btn" @click="openUserMemoryDrawer">
+              长期记忆
+            </button>
+            <button class="header-memory-btn" @click="openProjectMemoryDrawer">
+              项目记忆
+            </button>
+          </div>
         </div>
       </header>
 
@@ -393,6 +398,16 @@
       :loading="loadingProjectMemories"
       @close="showProjectMemoryDrawer = false"
     />
+    <UserMemoryDrawer
+      :visible="showUserMemoryDrawer"
+      :memories="userMemories"
+      :loading="loadingUserMemories"
+      :deleting-id="deletingUserMemoryId"
+      :error="userMemoryError"
+      @close="closeUserMemoryDrawer"
+      @refresh="loadUserMemories"
+      @delete="deleteUserMemory"
+    />
   </div>
 </template>
 
@@ -402,6 +417,7 @@ import { agentAPI, projectAPI, type ProjectMemory } from '../api/client'
 import { useSession, type SessionType, type ChatSession } from '../composables/useSession'
 import { useAuth } from '../composables/useAuth'
 import { useProject } from '../composables/useProject'
+import { useUserMemory } from '../composables/useUserMemory'
 import type { ThinkingStep } from '../api/client'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
@@ -412,6 +428,7 @@ import AgentThinking from '../components/AgentThinking.vue'
 import ToolsPanel from '../components/ToolsPanel.vue'
 import SourceDrawer from '../components/SourceDrawer.vue'
 import ProjectMemoryDrawer from '../components/ProjectMemoryDrawer.vue'
+import UserMemoryDrawer from '../components/UserMemoryDrawer.vue'
 import 'highlight.js/styles/github-dark.css'
 import 'katex/dist/katex.min.css'
 
@@ -420,6 +437,17 @@ const SESSION_TYPE: SessionType = 'agentic'
 const { sessions, loading: loadingSessions, loadSessions, deleteSession: deleteSessionFromList, renameSession: renameSessionInList } = useSession(SESSION_TYPE)
 const { isAdmin, user: currentUser } = useAuth()
 const { currentProjectId, currentProject, loadProjects } = useProject()
+const {
+  showUserMemoryDrawer,
+  loadingUserMemories,
+  deletingUserMemoryId,
+  userMemoryError,
+  userMemories,
+  loadUserMemories,
+  openUserMemoryDrawer,
+  deleteUserMemory,
+  closeUserMemoryDrawer
+} = useUserMemory()
 
 // 重命名相关状态
 const editingSessionId = ref<number>()
@@ -997,6 +1025,7 @@ watch(currentProjectId, () => {
   messages.value = []
   hasUserInteracted.value = false
   showProjectMemoryDrawer.value = false
+  closeUserMemoryDrawer()
   projectMemories.value = []
   loadSessions()
 })
@@ -1017,6 +1046,14 @@ watch(currentProjectId, () => {
   margin: 4px 0 0;
   font-size: var(--text-sm);
   color: var(--text-secondary);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .header-memory-btn {
@@ -1045,6 +1082,11 @@ watch(currentProjectId, () => {
 
   .header-memory-btn {
     width: 100%;
+  }
+
+  .header-actions {
+    width: 100%;
+    justify-content: stretch;
   }
 }
 

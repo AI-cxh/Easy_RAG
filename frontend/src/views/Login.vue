@@ -15,6 +15,14 @@
       <div class="shape shape-3"></div>
     </div>
 
+    <!-- 返回介绍页按钮 -->
+    <button class="back-btn" @click="router.push('/')" title="返回介绍页">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M19 12H5"/>
+        <path d="M12 19l-7-7 7-7"/>
+      </svg>
+    </button>
+
     <!-- 登录卡片 -->
     <div class="login-card" :class="{ 'card-hovered': isCardHovered }"
       @mouseenter="isCardHovered = true"
@@ -272,6 +280,40 @@ async function handleLogin() {
   0%, 100% { transform: translate(0, 0) scale(1); }
   33% { transform: translate(30px, -30px) scale(1.05); }
   66% { transform: translate(-20px, 20px) scale(0.95); }
+}
+
+/* 返回按钮 */
+.back-btn {
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(61, 54, 50, 0.06);
+  border-radius: 12px;
+  color: #6b5f57;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  z-index: 10;
+}
+
+.back-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.back-btn:hover {
+  color: #c47d5e;
+  background: rgba(255, 255, 255, 1);
+  border-color: rgba(196, 125, 94, 0.2);
+  box-shadow: 0 4px 12px rgba(61, 54, 50, 0.06);
+  transform: translateX(-2px);
 }
 
 /* 登录卡片 */
@@ -685,6 +727,13 @@ async function handleLogin() {
 
 /* 响应式 */
 @media (max-width: 480px) {
+  .back-btn {
+    top: 12px;
+    left: 12px;
+    width: 36px;
+    height: 36px;
+  }
+
   .login-card {
     margin: 16px;
     padding: 32px 24px;

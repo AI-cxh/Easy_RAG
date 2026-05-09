@@ -86,7 +86,7 @@ loadProjects()
 function handleLogout() {
   showUserMenu.value = false
   logout()
-  router.push('/login')
+  router.push('/')
 }
 
 // 点击外部关闭菜单

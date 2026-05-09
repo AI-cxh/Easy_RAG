@@ -38,9 +38,14 @@
             <h1 class="header-title">Easy RAG</h1>
             <p class="header-project">当前项目：{{ currentProject?.name || '未选择项目' }}</p>
           </div>
-          <button class="header-memory-btn" @click="openProjectMemoryDrawer">
-            查看项目记忆
-          </button>
+          <div class="header-actions">
+            <button class="header-memory-btn" @click="openUserMemoryDrawer">
+              长期记忆
+            </button>
+            <button class="header-memory-btn" @click="openProjectMemoryDrawer">
+              项目记忆
+            </button>
+          </div>
         </div>
       </header>
 
@@ -333,6 +338,16 @@
       :loading="loadingProjectMemories"
       @close="showProjectMemoryDrawer = false"
     />
+    <UserMemoryDrawer
+      :visible="showUserMemoryDrawer"
+      :memories="userMemories"
+      :loading="loadingUserMemories"
+      :deleting-id="deletingUserMemoryId"
+      :error="userMemoryError"
+      @close="closeUserMemoryDrawer"
+      @refresh="loadUserMemories"
+      @delete="deleteUserMemory"
+    />
   </div>
 </template>
 
@@ -341,6 +356,7 @@ import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { chatAPI, knowledgeAPI, projectAPI, type ProjectMemory } from '../api/client'
 import { useSession, type SessionType } from '../composables/useSession'
 import { useProject } from '../composables/useProject'
+import { useUserMemory } from '../composables/useUserMemory'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
 import DOMPurify from 'dompurify'
@@ -349,6 +365,7 @@ import AppNavRail from '../components/AppNavRail.vue'
 import AppSidebar from '../components/AppSidebar.vue'
 import SourceDrawer from '../components/SourceDrawer.vue'
 import ProjectMemoryDrawer from '../components/ProjectMemoryDrawer.vue'
+import UserMemoryDrawer from '../components/UserMemoryDrawer.vue'
 import 'highlight.js/styles/github-dark.css'
 import 'katex/dist/katex.min.css'
 
@@ -356,6 +373,17 @@ import 'katex/dist/katex.min.css'
 const SESSION_TYPE: SessionType = 'rag'
 const { sessions, loading: loadingSessions, loadSessions, deleteSession: deleteSessionFromList, renameSession: renameSessionInList } = useSession(SESSION_TYPE)
 const { currentProjectId, currentProject, loadProjects } = useProject()
+const {
+  showUserMemoryDrawer,
+  loadingUserMemories,
+  deletingUserMemoryId,
+  userMemoryError,
+  userMemories,
+  loadUserMemories,
+  openUserMemoryDrawer,
+  deleteUserMemory,
+  closeUserMemoryDrawer
+} = useUserMemory()
 
 // 类型定义
 interface SourceDetail {
@@ -818,6 +846,7 @@ watch(currentProjectId, () => {
   hasUserInteracted.value = false
   selectedKbIds.value = []
   showProjectMemoryDrawer.value = false
+  closeUserMemoryDrawer()
   projectMemories.value = []
   loadSessions()
   loadKnowledgeBases()
@@ -839,6 +868,14 @@ watch(currentProjectId, () => {
   margin: 4px 0 0;
   font-size: var(--text-sm);
   color: var(--text-secondary);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .header-memory-btn {
@@ -867,6 +904,11 @@ watch(currentProjectId, () => {
 
   .header-memory-btn {
     width: 100%;
+  }
+
+  .header-actions {
+    width: 100%;
+    justify-content: stretch;
   }
 }
 </style>

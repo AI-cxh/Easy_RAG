@@ -54,10 +54,19 @@ class Settings(BaseSettings):
     MEM0_QDRANT_PATH: str = "./mem0_qdrant"
     MEM0_LLM_PROVIDER: Optional[str] = None
     MEM0_LLM_MODEL: Optional[str] = None
+    MEM0_LLM_API_KEY: Optional[str] = None
+    MEM0_LLM_BASE_URL: Optional[str] = None
     MEM0_LLM_TEMPERATURE: float = 0.1
     MEM0_EMBEDDER_PROVIDER: Optional[str] = None
     MEM0_EMBEDDER_MODEL: Optional[str] = None
+    MEM0_EMBEDDER_API_KEY: Optional[str] = None
+    MEM0_EMBEDDER_BASE_URL: Optional[str] = None
     MEM0_EMBEDDER_DIMS: Optional[int] = None
+    MEM0_CUSTOM_INSTRUCTIONS: str = (
+        "请始终使用简体中文保存记忆。"
+        "记忆应简洁、准确，只保留跨会话仍然有用的长期信息。"
+        "不要保存一次性任务、临时问题、API Key、密码、令牌或其他敏感信息。"
+    )
 
     # JWT认证配置
     JWT_SECRET_KEY: str = ""  # 生产环境必须设置强密钥

@@ -45,6 +45,45 @@ class UserMemoryService:
         lines.extend([f"- {memory}" for memory in memories])
         return "\n".join(lines)
 
+    async def list_user_memories(self, user_id: int, limit: int = 100) -> List[Dict[str, Any]]:
+        """列出当前用户的 mem0 长期记忆。"""
+        if not self.enabled:
+            return []
+
+        client = self._get_client()
+        if not client:
+            return []
+
+        filters: Dict[str, Any] = {"user_id": str(user_id)}
+        if settings.MEM0_AGENT_ID:
+            filters["agent_id"] = settings.MEM0_AGENT_ID
+
+        try:
+            result = await client.get_all(filters=filters, top_k=limit)
+        except TypeError:
+            result = await client.get_all(user_id=str(user_id), top_k=limit)
+        except Exception as exc:
+            logger.warning("Failed to list mem0 user memories: %s", exc)
+            raise
+
+        return self._normalize_memory_items(result)
+
+    async def delete_user_memory(self, user_id: int, memory_id: str) -> bool:
+        """删除当前用户的一条 mem0 记忆。"""
+        if not self.enabled:
+            return False
+
+        client = self._get_client()
+        if not client:
+            return False
+
+        memories = await self.list_user_memories(user_id=user_id)
+        if not any(str(memory.get("id")) == str(memory_id) for memory in memories):
+            return False
+
+        await client.delete(memory_id)
+        return True
+
     async def add_turn(
         self,
         user_id: int,
@@ -155,19 +194,24 @@ class UserMemoryService:
         if settings.MEM0_VECTOR_STORE_PROVIDER == "qdrant":
             config["vector_store"]["config"]["path"] = settings.MEM0_QDRANT_PATH
 
+        if settings.MEM0_CUSTOM_INSTRUCTIONS:
+            config["custom_instructions"] = settings.MEM0_CUSTOM_INSTRUCTIONS
+
         if settings.MEM0_LLM_PROVIDER:
             llm_config: Dict[str, Any] = {
                 "temperature": settings.MEM0_LLM_TEMPERATURE
             }
             if settings.MEM0_LLM_MODEL:
                 llm_config["model"] = settings.MEM0_LLM_MODEL
-            if settings.OPENAI_API_KEY:
-                llm_config["api_key"] = settings.OPENAI_API_KEY
-            if settings.OPENAI_API_BASE:
+            llm_api_key = settings.MEM0_LLM_API_KEY or settings.OPENAI_API_KEY
+            llm_base_url = settings.MEM0_LLM_BASE_URL or settings.OPENAI_API_BASE
+            if llm_api_key:
+                llm_config["api_key"] = llm_api_key
+            if llm_base_url:
                 if settings.MEM0_LLM_PROVIDER == "deepseek":
-                    llm_config["deepseek_base_url"] = settings.OPENAI_API_BASE
+                    llm_config["deepseek_base_url"] = llm_base_url
                 else:
-                    llm_config["openai_base_url"] = settings.OPENAI_API_BASE
+                    llm_config["openai_base_url"] = llm_base_url
             config["llm"] = {
                 "provider": settings.MEM0_LLM_PROVIDER,
                 "config": llm_config
@@ -179,10 +223,12 @@ class UserMemoryService:
                 embedder_config["model"] = settings.MEM0_EMBEDDER_MODEL
             if settings.MEM0_EMBEDDER_DIMS:
                 embedder_config["embedding_dims"] = settings.MEM0_EMBEDDER_DIMS
-            if settings.EMBEDDING_API_KEY or settings.OPENAI_API_KEY:
-                embedder_config["api_key"] = settings.EMBEDDING_API_KEY or settings.OPENAI_API_KEY
-            if settings.EMBEDDING_API_BASE or settings.OPENAI_API_BASE:
-                embedder_config["openai_base_url"] = settings.EMBEDDING_API_BASE or settings.OPENAI_API_BASE
+            embedder_api_key = settings.MEM0_EMBEDDER_API_KEY or settings.EMBEDDING_API_KEY or settings.OPENAI_API_KEY
+            embedder_base_url = settings.MEM0_EMBEDDER_BASE_URL or settings.EMBEDDING_API_BASE or settings.OPENAI_API_BASE
+            if embedder_api_key:
+                embedder_config["api_key"] = embedder_api_key
+            if embedder_base_url:
+                embedder_config["openai_base_url"] = embedder_base_url
             config["embedder"] = {
                 "provider": settings.MEM0_EMBEDDER_PROVIDER,
                 "config": embedder_config
@@ -263,6 +309,46 @@ class UserMemoryService:
                 memories.append(text)
 
         return memories
+
+    def _normalize_memory_items(self, result: Any) -> List[Dict[str, Any]]:
+        if isinstance(result, dict):
+            items = result.get("results") or result.get("memories") or []
+        elif isinstance(result, list):
+            items = result
+        else:
+            return []
+
+        normalized: List[Dict[str, Any]] = []
+        for item in items:
+            if isinstance(item, str):
+                normalized.append({
+                    "id": item,
+                    "memory": item,
+                    "metadata": {},
+                    "created_at": None,
+                    "updated_at": None
+                })
+                continue
+
+            if not isinstance(item, dict):
+                continue
+
+            memory_id = item.get("id") or item.get("memory_id") or item.get("uuid")
+            memory_text = item.get("memory") or item.get("text") or item.get("content") or ""
+            metadata = item.get("metadata") or {}
+            if not isinstance(metadata, dict):
+                metadata = {}
+
+            normalized.append({
+                "id": str(memory_id) if memory_id is not None else "",
+                "memory": str(memory_text).strip(),
+                "metadata": metadata,
+                "created_at": item.get("created_at") or item.get("createdAt"),
+                "updated_at": item.get("updated_at") or item.get("updatedAt"),
+                "score": item.get("score")
+            })
+
+        return [item for item in normalized if item["id"] and item["memory"]]
 
     def _log_background_error(self, task: asyncio.Task) -> None:
         try:
